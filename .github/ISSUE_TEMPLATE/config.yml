@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussion
+    url: https://github.com/JitendraJha98/fakeradar/discussions
+    about: Ask usage questions, share results, and discuss ideas.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/JitendraJha98/fakeradar/security/advisories/new
+    about: Please report security issues privately here, not in public issues. See SECURITY.md.
