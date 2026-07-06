@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fakeradar"
+version = "0.1.0"
+description = "Local-first AI-generated image detection: gradient-field forensics + frequency analysis + foundation-model semantics in one modular pipeline."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Jitendra Jha" }]
+keywords = [
+  "ai-image-detection", "synthetic-media", "image-forensics",
+  "deepfake-detection", "gradient-fields", "generative-ai",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Security",
+]
+dependencies = [
+  "torch>=2.1",
+  "torchvision>=0.16",
+  "numpy>=1.24",
+  "pillow>=10.0",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+  "rich>=13.0",
+]
+
+[project.optional-dependencies]
+hub = ["huggingface_hub>=0.23", "safetensors>=0.4"]
+semantic = ["timm>=1.0.7"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+onnx = ["onnx>=1.16", "onnxruntime>=1.18"]
+demo = ["gradio>=4.36"]
+dev = ["pytest>=8.0", "ruff>=0.5", "pre-commit>=3.7"]
+all = ["fakeradar[hub,semantic,serve,onnx,demo]"]
+
+[project.scripts]
+fakeradar = "fakeradar.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/JitendraJha98/fakeradar"
+Documentation = "https://github.com/JitendraJha98/fakeradar/tree/main/docs"
+Issues = "https://github.com/JitendraJha98/fakeradar/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fakeradar"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

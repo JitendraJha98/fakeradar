@@ -1,0 +1,22 @@
+# Tier: FAST — fully offline, CPU-friendly (~12M params, no downloads).
+# Forensic branches only: gradient fields + frequency spectrum.
+tier: fast
+crop_size: 256
+max_crops: 4
+threshold_real: 0.35   # below -> "likely real"
+threshold_fake: 0.65   # above -> "likely AI"; between -> "uncertain"
+branches:
+  - name: gradient
+    enabled: true
+    params:
+      use_lgrad: false        # true = add LGrad-style input-gradient channel (downloads resnet18 weights)
+  - name: frequency
+    enabled: true
+    params:
+      n_bins: 128
+  - name: semantic
+    enabled: false
+fusion:
+  embed_dim: 256
+  hidden_dim: 512
+  dropout: 0.1

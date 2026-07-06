@@ -1,0 +1,23 @@
+# Training config for the FAST tier on a single GPU (A100: ~2-4h on a
+# GenImage single-generator split; adjust batch size down for smaller GPUs).
+detector: configs/fast.yaml
+
+data:
+  train_manifest: data/manifests/genimage_sdv14_train.csv
+  val_manifest: data/manifests/genimage_sdv14_val.csv
+  num_workers: 8
+
+optim:
+  epochs: 10
+  batch_size: 64
+  lr: 2.0e-4
+  weight_decay: 0.05
+  warmup_steps: 500
+  amp: true
+  grad_clip: 1.0
+  aux_loss_weight: 0.3
+
+run:
+  out_dir: runs/fast_v0
+  seed: 42
+  log_every: 50

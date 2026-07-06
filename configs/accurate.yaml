@@ -1,0 +1,24 @@
+# Tier: ACCURATE — adds a frozen CLIP ViT semantic branch (better generalization
+# to unseen generators; ~100M extra frozen params, first run downloads weights).
+tier: accurate
+crop_size: 256
+max_crops: 8
+threshold_real: 0.35
+threshold_fake: 0.65
+branches:
+  - name: gradient
+    enabled: true
+    params:
+      use_lgrad: false
+  - name: frequency
+    enabled: true
+    params:
+      n_bins: 128
+  - name: semantic
+    enabled: true
+    params:
+      model_name: vit_base_patch16_clip_224.openai
+fusion:
+  embed_dim: 256
+  hidden_dim: 512
+  dropout: 0.1

@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+title: "fakeradar: local-first AI-generated image detection"
+message: "If you use fakeradar in your research, please cite it as below."
+type: software
+authors:
+  - family-names: "Jha"
+    given-names: "Jitendra"
+repository-code: "https://github.com/JitendraJha98/fakeradar"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-07-06
+keywords:
+  - ai-image-detection
+  - image-forensics
+  - gradient-fields
+  - synthetic-media
