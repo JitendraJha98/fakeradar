@@ -84,6 +84,14 @@ fakeradar benchmark data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
 fakeradar robustness data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
 ```
 
+Training ends with automatic temperature calibration on the val split, so the
+published probability is calibrated, not just a ranking score. Re-calibrate on
+new held-out data anytime:
+
+```bash
+fakeradar calibrate data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
+```
+
 ## Benchmarks
 
 Protocol: train on **one** generator (GenImage SD v1.4), evaluate on **all eight** + in-the-wild sets, clean **and** perturbed. Full protocol in [docs/benchmarks.md](docs/benchmarks.md).
@@ -100,7 +108,10 @@ We publish robustness tables alongside every release. A detector that only repor
 fakeradar export-onnx runs/fast_v0/best.pt fakeradar_fast.onnx
 ```
 
-The fast tier exports to a single ONNX graph (dynamic batch) for onnxruntime on CPU, with int8 quantization on the roadmap.
+The fast tier exports to a single ONNX graph (dynamic batch) for onnxruntime on
+CPU, with int8 quantization on the roadmap. Export needs torch>=2.9; when
+onnxruntime is installed the command verifies the exported graph produces the
+same probabilities as eager PyTorch and prints the max difference.
 
 ## Limitations — read this
 

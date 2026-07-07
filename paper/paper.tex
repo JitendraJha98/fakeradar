@@ -257,10 +257,11 @@ the loss is
 \end{equation}
 Deep supervision stabilizes optimization and makes $(\alpha_b, \sigma(s_b))$
 a per-image explanation of \emph{which evidence fired}. At inference, logits
-are averaged over $K \le 8$ native crops (center plus corners), and $\hat p$
-is mapped to \{\texttt{likely\_real}, \texttt{uncertain},
-\texttt{likely\_ai}\} via thresholds $(\tau_r, \tau_f)$; abstention is an
-explicit, reported outcome.
+are averaged over $K$ native crops drawn from a $3{\times}3$ grid --- center
+first, then corners, then edge midpoints (default $K{=}4$ fast, $K{=}8$
+accurate) --- and $\hat p$ is mapped to \{\texttt{likely\_real},
+\texttt{uncertain}, \texttt{likely\_ai}\} via thresholds $(\tau_r, \tau_f)$;
+abstention is an explicit, reported outcome.
 
 \subsection{Robustness-first training}
 \label{sec:protocol}

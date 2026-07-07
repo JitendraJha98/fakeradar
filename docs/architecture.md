@@ -29,8 +29,13 @@ field expose the anomalous local gradient alignment of synthetic texture.
 auxiliary per-branch logits (deep supervision + interpretability) and a
 temperature buffer fitted post-hoc on validation data.
 
-**Inference.** Up to `max_crops` native crops (center+corners); logits are
-averaged; small images are the only case that is ever upscaled.
+**Inference.** Up to `max_crops` native crops from a 3×3 grid (center first,
+then corners, then edge midpoints — up to 9); logits are averaged; small
+images are the only case that is ever upscaled.
+
+**Calibration.** `fakeradar calibrate val.csv --checkpoint best.pt` fits the
+temperature on held-out logits (also runs automatically after training via
+`run.calibrate`); the checkpoint stores the fitted value + ECE before/after.
 
 ## Extension points
 - `register_branch` — new forensic views (reconstruction-error branch is a
