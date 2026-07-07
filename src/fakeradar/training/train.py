@@ -19,7 +19,7 @@ import yaml
 from torch.utils.data import DataLoader
 
 from ..config import DetectorConfig
-from ..evaluation.metrics import average_precision, roc_auc
+from ..evaluation.metrics import summarize
 from ..models import FakeRadarModel, save_checkpoint
 from .datasets import ManifestDataset
 
@@ -39,6 +39,7 @@ def _cosine_warmup(step: int, warmup: int, total: int) -> float:
 
 @torch.no_grad()
 def evaluate(model: FakeRadarModel, loader: DataLoader, device: str) -> dict[str, float]:
+    """Full paper-protocol metric set (AUROC, AP, acc, TPR@5%FPR, ECE, ...)."""
     model.eval()
     scores, labels = [], []
     for batch in loader:
@@ -50,11 +51,7 @@ def evaluate(model: FakeRadarModel, loader: DataLoader, device: str) -> dict[str
         labels.append(batch["label"])
     s = torch.cat(scores).numpy()
     y = torch.cat(labels).numpy()
-    return {
-        "auroc": roc_auc(y, s),
-        "ap": average_precision(y, s),
-        "acc@0.5": float(((s >= 0.5) == (y >= 0.5)).mean()),
-    }
+    return summarize(y, s)
 
 
 def train(config_path: str | Path) -> Path:
@@ -87,7 +84,9 @@ def train(config_path: str | Path) -> Path:
         pin_memory=(device == "cuda"),
         drop_last=True,
     )
-    dl_val = DataLoader(ds_val, batch_size=optim["batch_size"], num_workers=data.get("num_workers", 4))
+    dl_val = DataLoader(
+        ds_val, batch_size=optim["batch_size"], num_workers=data.get("num_workers", 4)
+    )
 
     trainable = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(trainable, lr=optim["lr"], weight_decay=optim["weight_decay"])
@@ -95,7 +94,7 @@ def train(config_path: str | Path) -> Path:
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: _cosine_warmup(s, optim.get("warmup_steps", 0), total_steps)
     )
-    scaler = torch.cuda.amp.GradScaler(enabled=optim.get("amp", True) and device == "cuda")
+    scaler = torch.amp.GradScaler(device, enabled=optim.get("amp", True) and device == "cuda")
     bce = torch.nn.BCEWithLogitsLoss()
     aux_w = optim.get("aux_loss_weight", 0.3)
 
@@ -103,13 +102,15 @@ def train(config_path: str | Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "metrics.csv"
     with open(log_path, "w", newline="") as f:
-        csv.writer(f).writerow(["epoch", "train_loss", "val_auroc", "val_ap", "val_acc"])
+        csv.writer(f).writerow(
+            ["epoch", "train_loss", "val_auroc", "val_ap", "val_acc", "val_tpr@5%fpr", "val_ece"]
+        )
 
     best_auroc, best_path = -1.0, out_dir / "best.pt"
     step = 0
     for epoch in range(optim["epochs"]):
         model.train()
-        running = 0.0
+        running, epoch_loss, epoch_batches = 0.0, 0.0, 0
         for batch in dl_train:
             crop = batch["crop"].to(device, non_blocking=True)
             label = batch["label"].to(device, non_blocking=True)
@@ -131,22 +132,49 @@ def train(config_path: str | Path) -> Path:
             scaler.update()
             sched.step()
             running += loss.item()
+            epoch_loss += loss.item()
+            epoch_batches += 1
             step += 1
             if step % run.get("log_every", 50) == 0:
-                print(f"epoch {epoch} step {step}/{total_steps} loss {running / run.get('log_every', 50):.4f}")
+                print(
+                    f"epoch {epoch} step {step}/{total_steps} loss {running / run.get('log_every', 50):.4f}"
+                )
                 running = 0.0
 
         metrics = evaluate(model, dl_val, device)
         print(f"[val] epoch {epoch}: {metrics}")
         with open(log_path, "a", newline="") as f:
             csv.writer(f).writerow(
-                [epoch, f"{loss.item():.4f}", metrics["auroc"], metrics["ap"], metrics["acc@0.5"]]
+                [
+                    epoch,
+                    f"{epoch_loss / max(1, epoch_batches):.4f}",
+                    metrics["auroc"],
+                    metrics["ap"],
+                    metrics["acc@0.5"],
+                    metrics["tpr@5%fpr"],
+                    metrics["ece"],
+                ]
             )
         save_checkpoint(model, out_dir / "last.pt", extra={"epoch": epoch, "val": metrics})
         if metrics["auroc"] > best_auroc:
             best_auroc = metrics["auroc"]
             save_checkpoint(model, best_path, extra={"epoch": epoch, "val": metrics})
             print(f"  ↳ new best AUROC {best_auroc:.4f} -> {best_path}")
+
+    if run.get("calibrate", True) and best_path.exists():
+        from ..evaluation.calibrate import calibrate_checkpoint
+
+        stats = calibrate_checkpoint(
+            best_path,
+            data["val_manifest"],
+            batch_size=optim["batch_size"],
+            num_workers=data.get("num_workers", 4),
+            device=device,
+        )
+        print(
+            f"[calibration] T={stats['temperature']:.3f} "
+            f"ECE {stats['ece_before']:.4f} -> {stats['ece_after']:.4f}"
+        )
 
     print(f"Done. Best val AUROC {best_auroc:.4f}. Checkpoint: {best_path}")
     return best_path

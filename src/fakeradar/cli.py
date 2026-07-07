@@ -2,6 +2,7 @@
 
     fakeradar scan photo.jpg vacation/          # score files or folders
     fakeradar train configs/train_fast.yaml     # train a tier
+    fakeradar calibrate val.csv --checkpoint best.pt
     fakeradar benchmark val.csv --checkpoint best.pt
     fakeradar robustness val.csv --checkpoint best.pt
     fakeradar export-onnx best.pt fast.onnx
@@ -13,6 +14,7 @@ Heavy imports (torch) happen inside commands so `fakeradar --help` is instant.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import typer
@@ -40,12 +42,15 @@ def _collect(paths: list[Path]) -> list[Path]:
 def _build_detector(tier: str, checkpoint: Path | None, pretrained: str | None, untrained_ok: bool):
     from .detector import Detector
 
-    det = Detector(
-        tier=tier,
-        checkpoint=checkpoint,
-        pretrained=pretrained,
-        allow_random_init=untrained_ok and checkpoint is None and pretrained is None,
-    )
+    try:
+        det = Detector(
+            tier=tier,
+            checkpoint=checkpoint,
+            pretrained=pretrained,
+            allow_random_init=untrained_ok and checkpoint is None and pretrained is None,
+        )
+    except ValueError as e:  # e.g. no weights given -> clean message, no traceback
+        raise typer.BadParameter(str(e)) from e
     if not det.trained:
         console.print(
             "[bold yellow]⚠ running with RANDOM weights (smoke-test mode) — scores are meaningless.[/]"
@@ -76,7 +81,13 @@ def scan(
     table.add_column("verdict")
     table.add_column("branches")
     for r in results:
-        color = "red" if r.verdict == VERDICT_FAKE else "green" if r.verdict == VERDICT_REAL else "yellow"
+        color = (
+            "red"
+            if r.verdict == VERDICT_FAKE
+            else "green"
+            if r.verdict == VERDICT_REAL
+            else "yellow"
+        )
         branches = "  ".join(f"{k}:{v:.2f}" for k, v in r.per_branch.items())
         table.add_row(Path(r.source).name, f"{r.prob_ai:.3f}", f"[{color}]{r.verdict}[/]", branches)
     console.print(table)
@@ -89,6 +100,26 @@ def train(config: Path = typer.Argument(..., help="Training YAML, e.g. configs/t
     from .training.train import train as _train
 
     _train(config)
+
+
+@app.command()
+def calibrate(
+    manifest: Path = typer.Argument(..., help="Held-out CSV with path,label[,generator]."),
+    checkpoint: Path = typer.Option(..., help="Trained checkpoint to calibrate."),
+    out: Path = typer.Option(
+        None, help="Write the calibrated checkpoint here (default: in place)."
+    ),
+    batch_size: int = typer.Option(32),
+):
+    """Fit the output temperature on held-out data (calibrated P(AI), lower ECE)."""
+    from .evaluation.calibrate import calibrate_checkpoint
+
+    stats = calibrate_checkpoint(checkpoint, manifest, out=out, batch_size=batch_size)
+    console.print(
+        f"temperature=[bold]{stats['temperature']:.3f}[/]  "
+        f"ECE {stats['ece_before']:.4f} -> [bold]{stats['ece_after']:.4f}[/]  (n={stats['n']})"
+    )
+    console.print(f"saved -> [bold]{out or checkpoint}[/]")
 
 
 @app.command()
@@ -123,11 +154,24 @@ def export_onnx_cmd(
     out: Path = typer.Argument(Path("fakeradar_fast.onnx")),
     crop_size: int = typer.Option(256),
 ):
-    """Export the fast tier to ONNX for CPU/edge deployment."""
-    from .models import export_onnx, load_checkpoint
+    """Export the fast tier to ONNX for CPU/edge deployment (torch>=2.9)."""
+    # torch's export progress logging prints emoji; on legacy Windows consoles
+    # (cp1252) that raises UnicodeEncodeError and kills the export. Degrade
+    # unencodable characters instead of crashing.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
 
-    path = export_onnx(load_checkpoint(checkpoint), out, crop_size)
+    from .models import export_onnx, load_checkpoint, verify_onnx_parity
+
+    model = load_checkpoint(checkpoint)
+    path = export_onnx(model, out, crop_size)
     console.print(f"exported -> [bold]{path}[/]")
+    try:
+        diff = verify_onnx_parity(model, path, crop_size)
+        console.print(f"parity vs torch: max abs prob diff = {diff:.2e} — OK")
+    except ImportError:
+        console.print("[dim]install onnxruntime ('fakeradar[onnx]') to run the parity check[/]")
 
 
 @app.command()

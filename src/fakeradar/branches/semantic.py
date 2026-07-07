@@ -48,7 +48,9 @@ class SemanticBranch(DetectionBranch):
 
         self.feature_dim = int(self.backbone.num_features)
         # small trainable projection so the frozen features can adapt scale
-        self.proj = nn.Sequential(nn.LayerNorm(self.feature_dim), nn.Linear(self.feature_dim, self.feature_dim))
+        self.proj = nn.Sequential(
+            nn.LayerNorm(self.feature_dim), nn.Linear(self.feature_dim, self.feature_dim)
+        )
 
     def preprocess(self, pil_image) -> torch.Tensor:
         """PIL RGB image -> (1, 3, S, S) tensor in [0,1] at the backbone's size."""

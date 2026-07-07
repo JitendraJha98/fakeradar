@@ -52,7 +52,9 @@ def _to_markdown(headers: list[str], rows: list[list]) -> str:
     return "\n".join(lines)
 
 
-def run_benchmark(detector: Detector, manifest: str | Path, out_md: str | Path | None = None) -> str:
+def run_benchmark(
+    detector: Detector, manifest: str | Path, out_md: str | Path | None = None
+) -> str:
     rows = read_manifest(manifest)
     by_gen: dict[str, tuple[list[float], list[int]]] = defaultdict(lambda: ([], []))
     all_scores, all_labels = [], []
@@ -65,15 +67,25 @@ def run_benchmark(detector: Detector, manifest: str | Path, out_md: str | Path |
             by_gen[row["generator"]][0].append(prob)
             by_gen[row["generator"]][1].append(1)
 
-    reals = [(s, y) for s, y in zip(all_scores, all_labels) if y == 0]
+    reals = [(s, y) for s, y in zip(all_scores, all_labels, strict=True) if y == 0]
     table = []
     for gen, (scores, labels) in sorted(by_gen.items()):
         s = scores + [r[0] for r in reals]
         y = labels + [r[1] for r in reals]
         m = summarize(y, s)
-        table.append([gen, len(scores), f"{m['auroc']:.4f}", f"{m['ap']:.4f}", f"{m['acc@0.5']:.4f}"])
+        table.append(
+            [gen, len(scores), f"{m['auroc']:.4f}", f"{m['ap']:.4f}", f"{m['acc@0.5']:.4f}"]
+        )
     overall = summarize(all_labels, all_scores)
-    table.append(["ALL", len(all_scores), f"{overall['auroc']:.4f}", f"{overall['ap']:.4f}", f"{overall['acc@0.5']:.4f}"])
+    table.append(
+        [
+            "ALL",
+            len(all_scores),
+            f"{overall['auroc']:.4f}",
+            f"{overall['ap']:.4f}",
+            f"{overall['acc@0.5']:.4f}",
+        ]
+    )
 
     md = _to_markdown(["generator", "n_fake", "AUROC", "AP", "acc@0.5"], table)
     if out_md:
@@ -81,7 +93,9 @@ def run_benchmark(detector: Detector, manifest: str | Path, out_md: str | Path |
     return md
 
 
-def run_robustness(detector: Detector, manifest: str | Path, out_md: str | Path | None = None) -> str:
+def run_robustness(
+    detector: Detector, manifest: str | Path, out_md: str | Path | None = None
+) -> str:
     rows = read_manifest(manifest)
     table = []
     for name, fn in PERTURBATIONS.items():

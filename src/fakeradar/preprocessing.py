@@ -29,11 +29,23 @@ def load_image(source) -> Image.Image:
 
 
 def crop_positions(w: int, h: int, size: int, max_crops: int) -> list[tuple[int, int]]:
-    """Top-left corners for up to max_crops crops: center first, then corners."""
-    cx, cy = (w - size) // 2, (h - size) // 2
-    positions = [(cx, cy)]
-    corners = [(0, 0), (w - size, 0), (0, h - size), (w - size, h - size)]
-    for p in corners:
+    """Top-left corners for up to max_crops crops, in coverage-priority order:
+    center, then the four corners, then the four edge midpoints (a 3x3 grid)."""
+    x0, x1, xc = 0, w - size, (w - size) // 2
+    y0, y1, yc = 0, h - size, (h - size) // 2
+    grid = [
+        (xc, yc),  # center
+        (x0, y0),
+        (x1, y0),
+        (x0, y1),
+        (x1, y1),  # corners
+        (xc, y0),
+        (xc, y1),
+        (x0, yc),
+        (x1, yc),  # edge midpoints
+    ]
+    positions: list[tuple[int, int]] = []
+    for p in grid:
         if p not in positions:
             positions.append(p)
     return positions[: max(1, max_crops)]

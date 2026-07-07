@@ -61,18 +61,22 @@ class FusionHead(nn.Module):
     def probability(self, logit: torch.Tensor) -> torch.Tensor:
         return torch.sigmoid(logit / self.temperature)
 
-    def fit_temperature(self, logits: torch.Tensor, labels: torch.Tensor, steps: int = 200) -> float:
+    def fit_temperature(
+        self, logits: torch.Tensor, labels: torch.Tensor, steps: int = 200
+    ) -> float:
         """Simple temperature scaling on held-out (logits, labels)."""
-        log_t = torch.zeros(1, requires_grad=True)
+        logits = logits.detach().float()
+        labels = labels.detach().float()
+        log_t = torch.zeros(1, device=logits.device, requires_grad=True)
         opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=steps)
         bce = nn.BCEWithLogitsLoss()
 
         def closure():
             opt.zero_grad()
-            loss = bce(logits / log_t.exp(), labels.float())
+            loss = bce(logits / log_t.exp(), labels)
             loss.backward()
             return loss
 
         opt.step(closure)
-        self.temperature.fill_(float(log_t.exp().item()))
+        self.temperature.fill_(float(log_t.exp().clamp(0.05, 20.0).item()))
         return float(self.temperature.item())

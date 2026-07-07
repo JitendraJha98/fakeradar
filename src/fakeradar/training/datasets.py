@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import csv
 import random
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import torch
 from PIL import Image

@@ -17,3 +17,6 @@ __all__ = [
     "expected_calibration_error",
     "summarize",
 ]
+
+# calibrate.py is imported lazily (from .calibrate import ...) by its users so
+# that importing fakeradar.evaluation never pulls in torch DataLoader machinery.

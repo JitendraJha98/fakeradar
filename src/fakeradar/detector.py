@@ -1,10 +1,10 @@
 """High-level detection API.
 
-    from fakeradar import Detector
+from fakeradar import Detector
 
-    det = Detector(tier="fast", checkpoint="runs/fast_v0/best.pt")
-    result = det.predict("photo.jpg")
-    print(result.prob_ai, result.verdict, result.per_branch)
+det = Detector(tier="fast", checkpoint="runs/fast_v0/best.pt")
+result = det.predict("photo.jpg")
+print(result.prob_ai, result.verdict, result.per_branch)
 """
 
 from __future__ import annotations

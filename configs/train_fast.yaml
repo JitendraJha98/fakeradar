@@ -21,3 +21,4 @@ run:
   out_dir: runs/fast_v0
   seed: 42
   log_every: 50
+  calibrate: true   # fit the output temperature on the val split after training

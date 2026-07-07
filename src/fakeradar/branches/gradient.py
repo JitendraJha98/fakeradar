@@ -39,15 +39,18 @@ def _pad_to_5x5(k: torch.Tensor) -> torch.Tensor:
 
 def _srm_kernels() -> torch.Tensor:
     """Four fixed high-pass kernels, shape (4, 1, 5, 5)."""
-    kv = torch.tensor(
-        [
-            [-1.0, 2, -2, 2, -1],
-            [2, -6, 8, -6, 2],
-            [-2, 8, -12, 8, -2],
-            [2, -6, 8, -6, 2],
-            [-1, 2, -2, 2, -1],
-        ]
-    ) / 12.0
+    kv = (
+        torch.tensor(
+            [
+                [-1.0, 2, -2, 2, -1],
+                [2, -6, 8, -6, 2],
+                [-2, 8, -12, 8, -2],
+                [2, -6, 8, -6, 2],
+                [-1, 2, -2, 2, -1],
+            ]
+        )
+        / 12.0
+    )
     lap = _pad_to_5x5(torch.tensor([[0.0, 1, 0], [1, -4, 1], [0, 1, 0]]))
     sx = _pad_to_5x5(torch.tensor([[-1.0, 0, 1], [-2, 0, 2], [-1, 0, 1]]) / 4.0)
     sy = _pad_to_5x5(torch.tensor([[-1.0, -2, -1], [0, 0, 0], [1, 2, 1]]) / 4.0)
@@ -83,7 +86,10 @@ class GradientFieldBranch(DetectionBranch):
         enc.fc = nn.Identity()
         self.encoder = enc
 
-        self._lgrad_net: nn.Module | None = None
+        # Stored via object.__setattr__ so the frozen net is NOT a submodule:
+        # it stays out of state_dict()/parameters() (no ~45MB checkpoint bloat)
+        # and model.train() cannot flip its BatchNorm back to training mode.
+        object.__setattr__(self, "_lgrad_net", None)
         if use_lgrad:
             self._init_lgrad()
 
@@ -94,7 +100,7 @@ class GradientFieldBranch(DetectionBranch):
         net = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).eval()
         for p in net.parameters():
             p.requires_grad_(False)
-        self._lgrad_net = net
+        object.__setattr__(self, "_lgrad_net", net)
         mean = torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
         std = torch.tensor(IMAGENET_STD).view(1, 3, 1, 1)
         self.register_buffer("_lg_mean", mean)
@@ -102,10 +108,13 @@ class GradientFieldBranch(DetectionBranch):
 
     def _lgrad_map(self, x: torch.Tensor) -> torch.Tensor:
         """Input-gradient of a frozen pretrained CNN (LGrad-style transform)."""
-        assert self._lgrad_net is not None
+        net: nn.Module = self._lgrad_net
+        assert net is not None
+        if next(net.parameters()).device != x.device:  # not a submodule -> .to() skips it
+            net.to(x.device)
         with torch.enable_grad():
             xg = x.detach().clone().requires_grad_(True)
-            logits = self._lgrad_net((xg - self._lg_mean) / self._lg_std)
+            logits = net((xg - self._lg_mean) / self._lg_std)
             score = torch.logsumexp(logits, dim=1).sum()
             (grad,) = torch.autograd.grad(score, xg)
         g = grad.detach()
