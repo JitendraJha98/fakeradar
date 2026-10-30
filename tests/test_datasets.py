@@ -55,3 +55,60 @@ def test_dataset_augmented_still_correct_shape(tmp_path):
     manifest.write_text(f"path,label\n{paths[0]},1\n")
     ds = ManifestDataset(manifest, crop_size=64, augment=True)
     assert ds[0]["crop"].shape == (3, 64, 64)
+
+
+def test_read_manifest_validates_labels_and_columns(tmp_path):
+    bad_label = tmp_path / "bad.csv"
+    bad_label.write_text("path,label\na.png,2\n")
+    with pytest.raises(ValueError, match="label must be 0"):
+        read_manifest(bad_label)
+
+    no_label = tmp_path / "nolabel.csv"
+    no_label.write_text("path,generator\na.png,sd\n")
+    with pytest.raises(ValueError, match="missing column"):
+        read_manifest(no_label)
+
+    blank_gen = tmp_path / "blank.csv"
+    blank_gen.write_text("path,label,generator\na.png,1,\n")
+    assert read_manifest(blank_gen)[0]["generator"] == "unknown"
+
+
+def test_require_both_classes():
+    from fakeradar.training.datasets import require_both_classes
+
+    require_both_classes([{"label": 0}, {"label": 1}], "ok")
+    with pytest.raises(ValueError, match="both real"):
+        require_both_classes([{"label": 1}], "val manifest")
+
+
+def test_corrupt_image_skipped_in_training_but_raises_in_eval(tmp_path):
+    good = _write_images(tmp_path, 1, size=(80, 80))[0]
+    bad = tmp_path / "corrupt.png"
+    bad.write_bytes(b"\x89PNG not really")
+    manifest = tmp_path / "m.csv"
+    manifest.write_text(f"path,label\n{bad},1\n{good},0\n")
+
+    train_ds = ManifestDataset(manifest, crop_size=64, augment=True)
+    with pytest.warns(UserWarning, match="skipping unreadable"):
+        item = train_ds[0]
+    assert item["crop"].shape == (3, 64, 64)
+
+    eval_ds = ManifestDataset(manifest, crop_size=64, augment=False)
+    with pytest.raises(OSError, match="corrupt.png"):
+        eval_ds[0]
+
+
+def test_multi_crop_eval_matches_inference_grid(tmp_path):
+    from fakeradar.preprocessing import extract_crops
+
+    path = _write_images(tmp_path, 1, size=(300, 200))[0]
+    manifest = tmp_path / "m.csv"
+    manifest.write_text(f"path,label\n{path},1\n")
+    ds = ManifestDataset(manifest, crop_size=64, augment=False, max_crops=4)
+    item = ds[0]
+    assert "crop" not in item
+    expected = extract_crops(Image.open(path).convert("RGB"), 64, 4)
+    assert torch.equal(item["crops"], expected)
+
+    with pytest.raises(ValueError, match="incompatible"):
+        ManifestDataset(manifest, crop_size=64, augment=True, max_crops=4)

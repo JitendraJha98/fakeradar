@@ -35,3 +35,27 @@ def test_max_crops_8_used_on_large_images():
     det = Detector(config=cfg, allow_random_init=True, device="cpu")
     img = Image.effect_noise((900, 700), 40).convert("RGB")
     assert det.predict(img).n_crops == 8
+
+
+def test_checkpoint_metadata_and_format_check(tmp_path):
+    from fakeradar import __version__
+    from fakeradar.models import read_checkpoint
+
+    p = tmp_path / "ck.pt"
+    save_checkpoint(FakeRadarModel(get_preset("fast")), p, extra={"epoch": 1})
+    ckpt = read_checkpoint(p)
+    assert ckpt["fakeradar_version"] == __version__ and ckpt["epoch"] == 1
+
+    bogus = tmp_path / "bogus.pt"
+    torch.save({"state_dict": {}}, bogus)
+    with pytest.raises(ValueError, match="not a fakeradar checkpoint"):
+        load_checkpoint(bogus)
+
+
+def test_checkpoint_with_nan_temperature_is_rejected(tmp_path):
+    model = FakeRadarModel(get_preset("fast"))
+    model.fusion.temperature.fill_(float("nan"))
+    p = tmp_path / "bad_t.pt"
+    save_checkpoint(model, p)
+    with pytest.raises(ValueError, match="invalid calibration temperature"):
+        load_checkpoint(p)

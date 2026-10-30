@@ -45,3 +45,19 @@ def test_fit_temperature_degenerate_input_stays_sane():
     # result must stay inside the clamp range [0.05, 20].
     fitted = head.fit_temperature(torch.full((64,), 5.0), torch.ones(64))
     assert 0.05 <= fitted < 1.0
+
+
+def test_fit_temperature_separable_data_is_finite():
+    """Regression: LBFGS diverged to T=NaN on perfectly separable held-out
+    logits (optimum T -> 0), which then turned every prediction into NaN."""
+    head = _head()
+    logits = torch.tensor([-3.0, -2.0, -1.5, 1.5, 2.0, 3.0])
+    labels = torch.tensor([0.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+    with pytest.warns(UserWarning, match="hit the bound"):
+        fitted = head.fit_temperature(logits, labels)
+    assert fitted == pytest.approx(0.05)
+
+
+def test_fit_temperature_rejects_nan_logits():
+    with pytest.raises(ValueError, match="NaN"):
+        _head().fit_temperature(torch.tensor([float("nan"), 1.0]), torch.tensor([0.0, 1.0]))

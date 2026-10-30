@@ -39,3 +39,9 @@ def test_detect_rejects_non_image(client):
     r = client.post("/v1/detect", files={"file": ("junk.png", b"not an image", "image/png")})
     assert r.status_code == 400
     assert "not a decodable image" in r.json()["detail"]
+
+
+def test_detect_rejects_oversized_upload():
+    small = TestClient(create_app(untrained_ok=True, max_upload_mb=0.001))  # ~1 KB
+    r = small.post("/v1/detect", files={"file": ("big.png", b"x" * 4096, "image/png")})
+    assert r.status_code == 413

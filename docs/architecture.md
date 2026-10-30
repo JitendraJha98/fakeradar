@@ -24,6 +24,9 @@
 synthesis noise; the NPR-style down-up residual isolates up-sampling traces;
 Scharr gradient magnitude plus *structure-tensor coherence* of the gradient
 field expose the anomalous local gradient alignment of synthetic texture.
+The stack is always computed in fp32 (autocast disabled): in fp16 the
+coherence ratio drifts by O(1), which under CUDA AMP would make the trained
+features differ from fp32 inference. Only the ResNet encoder runs in AMP.
 
 **Fusion.** Per-branch projections → learned softmax gate → MLP → logit, with
 auxiliary per-branch logits (deep supervision + interpretability) and a
@@ -36,6 +39,10 @@ images are the only case that is ever upscaled.
 **Calibration.** `fakeradar calibrate val.csv --checkpoint best.pt` fits the
 temperature on held-out logits (also runs automatically after training via
 `run.calibrate`); the checkpoint stores the fitted value + ECE before/after.
+Logits are collected with the inference protocol (mean over the same crop
+grid), since averaging K crops shrinks the logit spread. The fit is a bounded
+grid search over T ∈ [0.05, 20] (the NLL is convex in 1/T), with a warning if
+the optimum hits a bound (tiny or perfectly separable hold-out).
 
 ## Extension points
 - `register_branch` — new forensic views (reconstruction-error branch is a

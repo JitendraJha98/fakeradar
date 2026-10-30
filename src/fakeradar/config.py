@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+MAX_CROPS = 9  # size of the native-resolution crop grid (preprocessing.crop_positions)
+
 
 @dataclass
 class BranchConfig:
@@ -33,6 +35,19 @@ class DetectorConfig:
     branches: list[BranchConfig] = field(default_factory=list)
     fusion: FusionConfig = field(default_factory=FusionConfig)
 
+    def __post_init__(self) -> None:
+        if self.crop_size < 32:
+            raise ValueError(f"crop_size must be >= 32, got {self.crop_size}")
+        if not 1 <= self.max_crops <= MAX_CROPS:
+            raise ValueError(
+                f"max_crops must be in [1, {MAX_CROPS}] (the 3x3 crop grid), got {self.max_crops}"
+            )
+        if not 0.0 <= self.threshold_real <= self.threshold_fake <= 1.0:
+            raise ValueError(
+                "thresholds must satisfy 0 <= threshold_real <= threshold_fake <= 1, got "
+                f"{self.threshold_real} / {self.threshold_fake}"
+            )
+
     def enabled_branches(self) -> list[BranchConfig]:
         return [b for b in self.branches if b.enabled]
 
@@ -44,6 +59,9 @@ class DetectorConfig:
         branches = [BranchConfig(**b) for b in d.get("branches", [])]
         fusion = FusionConfig(**d.get("fusion", {}))
         keys = {"tier", "crop_size", "max_crops", "threshold_real", "threshold_fake"}
+        unknown = set(d) - keys - {"branches", "fusion"}
+        if unknown:  # a typo like `max_crop:` must not silently fall back to a default
+            raise ValueError(f"Unknown detector config keys: {sorted(unknown)}")
         rest = {k: v for k, v in d.items() if k in keys}
         return cls(branches=branches, fusion=fusion, **rest)
 

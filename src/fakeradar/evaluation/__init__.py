@@ -1,4 +1,5 @@
 from .metrics import (
+    abstention_rate,
     accuracy_at,
     average_precision,
     balanced_accuracy,
@@ -10,6 +11,7 @@ from .metrics import (
 
 __all__ = [
     "roc_auc",
+    "abstention_rate",
     "average_precision",
     "accuracy_at",
     "balanced_accuracy",

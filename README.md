@@ -49,7 +49,8 @@ r = det.predict("photo.jpg")
 print(r.prob_ai, r.verdict, r.per_branch)
 ```
 
-Local REST API: `fakeradar serve --checkpoint best.pt` → `POST /v1/detect`.
+Local REST API: `fakeradar serve --checkpoint best.pt` → `POST /v1/detect`
+(multipart `file`; uploads over 25 MB → 413, undecodable → 400).
 
 > **Weights status:** v0.1 pretrained weights are being trained now (see [ROADMAP.md](ROADMAP.md)) and will be published to the Hugging Face Hub. Until then: train your own with one command (below) or pass `--untrained-ok` for pipeline smoke tests.
 
@@ -78,19 +79,29 @@ Design details: [docs/architecture.md](docs/architecture.md).
 ## Train your own
 
 ```bash
-python scripts/prepare_genimage.py /data/GenImage --generators stable_diffusion_v_1_4
+# train / val (5% hold-out of SD1.4 train) / test (GenImage val, all generators)
+fakeradar prepare-genimage /data/GenImage --generators stable_diffusion_v_1_4 --test-generators all
 fakeradar train configs/train_fast.yaml            # ~2-4h on one A100
-fakeradar benchmark data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
-fakeradar robustness data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
+fakeradar train configs/train_fast.yaml --resume runs/fast_v0/last.pt   # after an interruption
+
+M=data/manifests/genimage_stable_diffusion_v_1_4_test.csv
+fakeradar benchmark  $M --checkpoint runs/fast_v0/best.pt --out docs/leaderboard.md --scores-csv runs/fast_v0/test_scores.csv
+fakeradar robustness $M --checkpoint runs/fast_v0/best.pt --out docs/robustness.md --scores-csv runs/fast_v0/robustness_scores.csv
 ```
 
-Training ends with automatic temperature calibration on the val split, so the
-published probability is calibrated, not just a ranking score. Re-calibrate on
-new held-out data anytime:
+Model selection and calibration use only the hold-out carved from the training
+split; GenImage's own `val` split is the untouched test set. Training ends with
+automatic temperature calibration on that hold-out — fit on the same
+multi-crop logit the detector outputs — so the published probability is
+calibrated, not just a ranking score. Re-calibrate on new held-out data anytime:
 
 ```bash
-fakeradar calibrate data/manifests/val.csv --checkpoint runs/fast_v0/best.pt
+fakeradar calibrate data/manifests/genimage_stable_diffusion_v_1_4_val.csv --checkpoint runs/fast_v0/best.pt
 ```
+
+`configs/train_accurate.yaml` trains the accurate tier the same way (needs
+`fakeradar[semantic]`). In a training config, `detector:` may also be just
+`fast` or `accurate`, so a pip install needs no `configs/` directory.
 
 ## Benchmarks
 

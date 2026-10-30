@@ -13,10 +13,13 @@ runs without it, fully offline.
 
 from __future__ import annotations
 
+import functools
+
 import torch
 import torch.nn as nn
 
 from ..constants import CLIP_MEAN, CLIP_STD, DEFAULT_SEMANTIC_SIZE
+from ..preprocessing import semantic_view
 from .base import DetectionBranch, register_branch
 
 
@@ -54,12 +57,10 @@ class SemanticBranch(DetectionBranch):
 
     def preprocess(self, pil_image) -> torch.Tensor:
         """PIL RGB image -> (1, 3, S, S) tensor in [0,1] at the backbone's size."""
-        from torchvision.transforms import functional as TF
+        return semantic_view(pil_image, self.image_size)
 
-        s = self.image_size
-        img = TF.resize(pil_image, s, antialias=True)
-        img = TF.center_crop(img, [s, s])
-        return TF.to_tensor(img).unsqueeze(0)
+    def preprocessor(self):
+        return functools.partial(semantic_view, size=self.image_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # x in [0,1], already resized
         with torch.no_grad():

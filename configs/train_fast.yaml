@@ -1,10 +1,14 @@
 # Training config for the FAST tier on a single GPU (A100: ~2-4h on a
 # GenImage single-generator split; adjust batch size down for smaller GPUs).
-detector: configs/fast.yaml
+# Manifests come from:
+#   fakeradar prepare-genimage /data/GenImage --generators stable_diffusion_v_1_4 --test-generators all
+# (val = 5% hold-out of the SD1.4 train split; GenImage's own val split is the
+# *_test.csv used by `fakeradar benchmark` / `robustness`, never for selection.)
+detector: configs/fast.yaml   # a detector YAML (CWD- or this-file-relative) or a preset: fast|accurate
 
 data:
-  train_manifest: data/manifests/genimage_sdv14_train.csv
-  val_manifest: data/manifests/genimage_sdv14_val.csv
+  train_manifest: data/manifests/genimage_stable_diffusion_v_1_4_train.csv
+  val_manifest: data/manifests/genimage_stable_diffusion_v_1_4_val.csv
   num_workers: 8
 
 optim:
@@ -19,6 +23,7 @@ optim:
 
 run:
   out_dir: runs/fast_v0
+  device: auto      # auto (cuda if available, else cpu) | cuda | cuda:1 | cpu | mps
   seed: 42
   log_every: 50
   calibrate: true   # fit the output temperature on the val split after training

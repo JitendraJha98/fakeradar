@@ -1,10 +1,11 @@
 """fakeradar CLI.
 
     fakeradar scan photo.jpg vacation/          # score files or folders
+    fakeradar prepare-genimage /data/GenImage --generators stable_diffusion_v_1_4
     fakeradar train configs/train_fast.yaml     # train a tier
     fakeradar calibrate val.csv --checkpoint best.pt
-    fakeradar benchmark val.csv --checkpoint best.pt
-    fakeradar robustness val.csv --checkpoint best.pt
+    fakeradar benchmark test.csv --checkpoint best.pt
+    fakeradar robustness test.csv --checkpoint best.pt
     fakeradar export-onnx best.pt fast.onnx
     fakeradar serve --checkpoint best.pt        # local REST API
 
@@ -19,12 +20,15 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from .constants import SUPPORTED_EXTENSIONS, VERDICT_FAKE, VERDICT_REAL
 
 app = typer.Typer(add_completion=False, help="Local-first AI-generated image detection.")
 console = Console()
+
+_DEVICE_HELP = "auto (cuda > mps > cpu), cpu, cuda, cuda:1, mps."
 
 
 def _collect(paths: list[Path]) -> list[Path]:
@@ -39,7 +43,13 @@ def _collect(paths: list[Path]) -> list[Path]:
     return files
 
 
-def _build_detector(tier: str, checkpoint: Path | None, pretrained: str | None, untrained_ok: bool):
+def _build_detector(
+    tier: str,
+    checkpoint: Path | None,
+    pretrained: str | None,
+    untrained_ok: bool = False,
+    device: str = "auto",
+):
     from .detector import Detector
 
     try:
@@ -47,10 +57,11 @@ def _build_detector(tier: str, checkpoint: Path | None, pretrained: str | None, 
             tier=tier,
             checkpoint=checkpoint,
             pretrained=pretrained,
+            device=device,
             allow_random_init=untrained_ok and checkpoint is None and pretrained is None,
         )
-    except ValueError as e:  # e.g. no weights given -> clean message, no traceback
-        raise typer.BadParameter(str(e)) from e
+    except (ValueError, KeyError) as e:  # no weights / not a checkpoint / unknown zoo name
+        raise typer.BadParameter(str(e).strip("'\"")) from e
     if not det.trained:
         console.print(
             "[bold yellow]⚠ running with RANDOM weights (smoke-test mode) — scores are meaningless.[/]"
@@ -64,42 +75,100 @@ def scan(
     tier: str = typer.Option("fast", help="fast (offline, CPU) or accurate (adds CLIP branch)."),
     checkpoint: Path = typer.Option(None, help="Path to a trained .pt checkpoint."),
     pretrained: str = typer.Option(None, help="Model-zoo name, e.g. fast-v0."),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
     untrained_ok: bool = typer.Option(False, help="Allow random-init weights (testing only)."),
 ):
-    """Score images: probability that each image is AI-generated."""
-    det = _build_detector(tier, checkpoint, pretrained, untrained_ok)
-    results = [det.predict(f) for f in _collect(paths)]
+    """Score images: probability that each image is AI-generated.
+
+    Unreadable files are reported and skipped; the exit code is 1 if any failed.
+    """
+    from PIL import Image
+
+    det = _build_detector(tier, checkpoint, pretrained, untrained_ok, device)
+    results, errors = [], []
+    for f in _collect(paths):
+        try:
+            results.append(det.predict(f))
+        except (OSError, Image.DecompressionBombError) as e:  # corrupt/truncated/huge image
+            errors.append({"source": str(f), "error": str(e)})
 
     if as_json:
-        typer.echo(json.dumps([r.to_dict() for r in results], indent=2))
-        return
+        typer.echo(json.dumps([r.to_dict() for r in results] + errors, indent=2))
+    else:
+        table = Table(title=f"fakeradar · tier={det.config.tier}")
+        table.add_column("image")
+        table.add_column("P(AI)", justify="right")
+        table.add_column("verdict")
+        table.add_column("branches")
+        for r in results:
+            color = (
+                "red"
+                if r.verdict == VERDICT_FAKE
+                else "green"
+                if r.verdict == VERDICT_REAL
+                else "yellow"
+            )
+            branches = "  ".join(f"{k}:{v:.2f}" for k, v in r.per_branch.items())
+            table.add_row(
+                escape(Path(r.source).name),
+                f"{r.prob_ai:.3f}",
+                f"[{color}]{r.verdict}[/]",
+                branches,
+            )
+        for e in errors:
+            table.add_row(
+                escape(Path(e["source"]).name), "–", "[magenta]error[/]", escape(e["error"])
+            )
+        console.print(table)
+        console.print("[dim]Probabilistic signal, not proof. See README §Limitations.[/]")
+    if errors:
+        raise typer.Exit(code=1)
 
-    table = Table(title=f"fakeradar · tier={det.config.tier}")
-    table.add_column("image")
-    table.add_column("P(AI)", justify="right")
-    table.add_column("verdict")
-    table.add_column("branches")
-    for r in results:
-        color = (
-            "red"
-            if r.verdict == VERDICT_FAKE
-            else "green"
-            if r.verdict == VERDICT_REAL
-            else "yellow"
+
+@app.command("prepare-genimage")
+def prepare_genimage(
+    root: Path = typer.Argument(
+        ..., help="GenImage root: ROOT/<generator>/[<subset>/]{train,val}/"
+    ),
+    generators: list[str] = typer.Option(
+        ..., "--generators", "-g", help="Training generator dir(s); repeat or comma-separate."
+    ),
+    test_generators: list[str] = typer.Option(
+        None, "--test-generators", "-t", help="Test generator(s), or 'all'. Default: --generators."
+    ),
+    out: Path = typer.Option(Path("data/manifests"), help="Output directory."),
+    name: str = typer.Option(None, help="Manifest prefix (default genimage_<generators>)."),
+    val_fraction: float = typer.Option(
+        0.05, help="Hold-out of the train split for val/calibration."
+    ),
+    seed: int = typer.Option(0),
+):
+    """Build train / val (hold-out) / test CSV manifests from a GenImage download."""
+    from .training.genimage import build_manifests
+
+    def split(values: list[str] | None) -> list[str] | None:
+        return [v for item in values for v in item.split(",") if v] if values else None
+
+    try:
+        result = build_manifests(
+            root, split(generators), split(test_generators), out, name, val_fraction, seed
         )
-        branches = "  ".join(f"{k}:{v:.2f}" for k, v in r.per_branch.items())
-        table.add_row(Path(r.source).name, f"{r.prob_ai:.3f}", f"[{color}]{r.verdict}[/]", branches)
-    console.print(table)
-    console.print("[dim]Probabilistic signal, not proof. See README §Limitations.[/]")
+    except (FileNotFoundError, ValueError) as e:
+        raise typer.BadParameter(str(e)) from e
+    for split_name, (path, n) in result.items():
+        console.print(f"{split_name:>5}: [bold]{path}[/] ({n} rows)")
 
 
 @app.command()
-def train(config: Path = typer.Argument(..., help="Training YAML, e.g. configs/train_fast.yaml")):
+def train(
+    config: Path = typer.Argument(..., help="Training YAML, e.g. configs/train_fast.yaml"),
+    resume: Path = typer.Option(None, help="Resume from a run's last.pt (optimizer state incl.)."),
+):
     """Train a detector tier from a manifest dataset."""
     from .training.train import train as _train
 
-    _train(config)
+    _train(config, resume=resume)
 
 
 @app.command()
@@ -109,12 +178,20 @@ def calibrate(
     out: Path = typer.Option(
         None, help="Write the calibrated checkpoint here (default: in place)."
     ),
-    batch_size: int = typer.Option(32),
+    num_workers: int = typer.Option(0, help="DataLoader workers for image decoding."),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
 ):
     """Fit the output temperature on held-out data (calibrated P(AI), lower ECE)."""
+    from .detector import auto_device
     from .evaluation.calibrate import calibrate_checkpoint
 
-    stats = calibrate_checkpoint(checkpoint, manifest, out=out, batch_size=batch_size)
+    stats = calibrate_checkpoint(
+        checkpoint,
+        manifest,
+        out=out,
+        num_workers=num_workers,
+        device=auto_device() if device == "auto" else device,
+    )
     console.print(
         f"temperature=[bold]{stats['temperature']:.3f}[/]  "
         f"ECE {stats['ece_before']:.4f} -> [bold]{stats['ece_after']:.4f}[/]  (n={stats['n']})"
@@ -125,27 +202,35 @@ def calibrate(
 @app.command()
 def benchmark(
     manifest: Path = typer.Argument(..., help="CSV with path,label[,generator]."),
-    checkpoint: Path = typer.Option(..., help="Trained checkpoint."),
+    checkpoint: Path = typer.Option(None, help="Trained checkpoint."),
+    pretrained: str = typer.Option(None, help="Model-zoo name, e.g. fast-v0."),
     out: Path = typer.Option(None, help="Write markdown table here."),
+    scores_csv: Path = typer.Option(None, help="Write raw per-image scores here."),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
 ):
-    """Per-generator AUROC/AP/accuracy table (cross-generator generalization)."""
-    from .detector import Detector
+    """Per-generator AUROC/AP/acc/TPR@5%FPR/ECE table (cross-generator generalization)."""
     from .evaluation.benchmark import run_benchmark
 
-    console.print(run_benchmark(Detector(checkpoint=checkpoint), manifest, out))
+    det = _build_detector("fast", checkpoint, pretrained, device=device)
+    console.print(run_benchmark(det, manifest, out, scores_csv))
 
 
 @app.command()
 def robustness(
-    manifest: Path = typer.Argument(...),
-    checkpoint: Path = typer.Option(...),
-    out: Path = typer.Option(None),
+    manifest: Path = typer.Argument(..., help="CSV with path,label[,generator]."),
+    checkpoint: Path = typer.Option(None, help="Trained checkpoint."),
+    pretrained: str = typer.Option(None, help="Model-zoo name, e.g. fast-v0."),
+    out: Path = typer.Option(None, help="Write markdown table here."),
+    scores_csv: Path = typer.Option(
+        None, help="Write raw per-image, per-perturbation scores here."
+    ),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
 ):
     """Re-evaluate under JPEG/resize/blur — the 'will it survive WhatsApp' table."""
-    from .detector import Detector
     from .evaluation.benchmark import run_robustness
 
-    console.print(run_robustness(Detector(checkpoint=checkpoint), manifest, out))
+    det = _build_detector("fast", checkpoint, pretrained, device=device)
+    console.print(run_robustness(det, manifest, out, scores_csv))
 
 
 @app.command("export-onnx")
@@ -176,10 +261,13 @@ def export_onnx_cmd(
 
 @app.command()
 def serve(
-    checkpoint: Path = typer.Option(None),
+    checkpoint: Path = typer.Option(None, help="Trained checkpoint."),
+    pretrained: str = typer.Option(None, help="Model-zoo name, e.g. fast-v0."),
     tier: str = typer.Option("fast"),
     host: str = typer.Option("127.0.0.1"),
     port: int = typer.Option(8000),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
+    max_upload_mb: float = typer.Option(25.0, help="Reject larger uploads with HTTP 413."),
     untrained_ok: bool = typer.Option(False),
 ):
     """Run a local REST API (POST /v1/detect with an image file)."""
@@ -189,11 +277,16 @@ def serve(
         raise typer.BadParameter("Install serve extras: pip install 'fakeradar[serve]'") from e
     from .server import create_app
 
-    uvicorn.run(create_app(tier, checkpoint, untrained_ok), host=host, port=port)
+    try:
+        api = create_app(tier, checkpoint, untrained_ok, pretrained, device, max_upload_mb)
+    except (ValueError, KeyError) as e:
+        raise typer.BadParameter(str(e).strip("'\"")) from e
+    uvicorn.run(api, host=host, port=port)
 
 
 @app.command()
 def version():
+    """Print the installed fakeradar version."""
     from . import __version__
 
     typer.echo(__version__)

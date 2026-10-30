@@ -9,6 +9,7 @@ Adding a new branch = subclass DetectionBranch, decorate with
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import torch
@@ -44,6 +45,13 @@ class DetectionBranch(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # (B,3,H,W) in [0,1]
         raise NotImplementedError
+
+    def preprocessor(self) -> Callable | None:
+        """For input_kind="resized": a *picklable* PIL -> (1,3,S,S) callable.
+        It must not hold the module itself — DataLoader workers on spawn-start
+        platforms (Windows/macOS) would otherwise receive a copy of the whole
+        backbone each epoch."""
+        return None
 
 
 def build_branch(name: str, **params: Any) -> DetectionBranch:

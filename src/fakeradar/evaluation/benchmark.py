@@ -1,25 +1,35 @@
 """Benchmark + robustness harness.
 
 `fakeradar benchmark manifest.csv --checkpoint best.pt`
-    -> per-generator AUROC/AP/acc table (the cross-generator generalization
-       view that actually matters), exported as markdown for the leaderboard.
+    -> per-generator AUROC/AP/acc/TPR@5%FPR/ECE table (the cross-generator
+       generalization view that actually matters) plus the mean over
+       generators, exported as markdown for the leaderboard.
 
 `fakeradar robustness manifest.csv --checkpoint best.pt`
     -> the same model re-evaluated under JPEG q∈{90,70,50,30}, downscale
        {0.75, 0.5}, and blur — the "will it survive WhatsApp" table.
+
+Both can write the raw per-image scores (`scores_csv`) so every published
+number is reproducible and auditable (paper/INTEGRITY_CHECKLIST.md).
+
+Per-generator rows score that generator's AI images against *all* real images
+in the manifest (the pooled real set).
 """
 
 from __future__ import annotations
 
+import csv
 import io
+import math
 from collections import defaultdict
 from pathlib import Path
 
 from PIL import Image, ImageFilter
 
 from ..detector import Detector
+from ..preprocessing import load_image
 from ..training.datasets import read_manifest
-from .metrics import summarize
+from .metrics import abstention_rate, summarize
 
 PERTURBATIONS = {
     "clean": lambda im: im,
@@ -52,62 +62,119 @@ def _to_markdown(headers: list[str], rows: list[list]) -> str:
     return "\n".join(lines)
 
 
+def _fmt(v: float) -> str:
+    return "n/a" if math.isnan(v) else f"{v:.4f}"
+
+
+def _abstainer(detector: Detector):
+    cfg = detector.config
+    return lambda s: abstention_rate(s, cfg.threshold_real, cfg.threshold_fake)
+
+
+def _abstain_note(detector: Detector) -> str:
+    cfg = detector.config
+    return f"abstain = share of `uncertain` verdicts, P(AI) in ({cfg.threshold_real}, {cfg.threshold_fake})."
+
+
+def _write_scores(path: str | Path, header: list[str], rows: list[list]) -> None:
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(rows)
+
+
 def run_benchmark(
-    detector: Detector, manifest: str | Path, out_md: str | Path | None = None
+    detector: Detector,
+    manifest: str | Path,
+    out_md: str | Path | None = None,
+    scores_csv: str | Path | None = None,
 ) -> str:
     rows = read_manifest(manifest)
-    by_gen: dict[str, tuple[list[float], list[int]]] = defaultdict(lambda: ([], []))
-    all_scores, all_labels = [], []
+    probs = [detector.predict(row["path"]).prob_ai for row in rows]
+    labels = [row["label"] for row in rows]
 
-    for row in rows:
-        prob = detector.predict(row["path"]).prob_ai
-        all_scores.append(prob)
-        all_labels.append(row["label"])
+    real_probs = [p for p, y in zip(probs, labels, strict=True) if y == 0]
+    by_gen: dict[str, list[float]] = defaultdict(list)
+    for row, p in zip(rows, probs, strict=True):
         if row["label"] == 1:
-            by_gen[row["generator"]][0].append(prob)
-            by_gen[row["generator"]][1].append(1)
+            by_gen[row["generator"]].append(p)
 
-    reals = [(s, y) for s, y in zip(all_scores, all_labels, strict=True) if y == 0]
-    table = []
-    for gen, (scores, labels) in sorted(by_gen.items()):
-        s = scores + [r[0] for r in reals]
-        y = labels + [r[1] for r in reals]
+    abstain = _abstainer(detector)
+
+    def metric_row(name: str, n_fake: int, y: list[int], s: list[float]) -> tuple[list, float]:
         m = summarize(y, s)
-        table.append(
-            [gen, len(scores), f"{m['auroc']:.4f}", f"{m['ap']:.4f}", f"{m['acc@0.5']:.4f}"]
-        )
-    overall = summarize(all_labels, all_scores)
-    table.append(
-        [
-            "ALL",
-            len(all_scores),
-            f"{overall['auroc']:.4f}",
-            f"{overall['ap']:.4f}",
-            f"{overall['acc@0.5']:.4f}",
-        ]
-    )
+        keys = ("auroc", "ap", "acc@0.5", "tpr@5%fpr", "ece")
+        return [name, n_fake, *(_fmt(m[k]) for k in keys), _fmt(abstain(s))], m["auroc"]
 
-    md = _to_markdown(["generator", "n_fake", "AUROC", "AP", "acc@0.5"], table)
+    table, gen_aurocs = [], []
+    for gen, fake_probs in sorted(by_gen.items()):
+        y = [1] * len(fake_probs) + [0] * len(real_probs)
+        row, auroc = metric_row(gen, len(fake_probs), y, fake_probs + real_probs)
+        table.append(row)
+        gen_aurocs.append(auroc)
+    table.append(metric_row("ALL", sum(labels), labels, probs)[0])
+    valid = [a for a in gen_aurocs if not math.isnan(a)]
+    if len(by_gen) > 1 and valid:
+        mean = _fmt(sum(valid) / len(valid))
+        table.append([f"MEAN ({len(valid)} gen)", "", mean, "", "", "", "", ""])
+
+    headers = ["generator", "n_fake", "AUROC", "AP", "acc@0.5", "TPR@5%FPR", "ECE", "abstain"]
+    md = _to_markdown(headers, table)
+    md += f"\n\n{len(real_probs)} real images pooled against each generator. {_abstain_note(detector)}"
     if out_md:
-        Path(out_md).write_text(md + "\n")
+        Path(out_md).write_text(md + "\n", encoding="utf-8")
+    if scores_csv:
+        _write_scores(
+            scores_csv,
+            ["path", "label", "generator", "prob_ai"],
+            [
+                [r["path"], r["label"], r["generator"], f"{p:.6f}"]
+                for r, p in zip(rows, probs, strict=True)
+            ],
+        )
     return md
 
 
 def run_robustness(
-    detector: Detector, manifest: str | Path, out_md: str | Path | None = None
+    detector: Detector,
+    manifest: str | Path,
+    out_md: str | Path | None = None,
+    scores_csv: str | Path | None = None,
 ) -> str:
     rows = read_manifest(manifest)
-    table = []
-    for name, fn in PERTURBATIONS.items():
-        scores, labels = [], []
-        for row in rows:
-            img = fn(Image.open(row["path"]).convert("RGB"))
-            scores.append(detector.predict(img).prob_ai)
-            labels.append(row["label"])
-        m = summarize(labels, scores)
-        table.append([name, f"{m['auroc']:.4f}", f"{m['acc@0.5']:.4f}", f"{m['tpr@5%fpr']:.4f}"])
+    labels = [row["label"] for row in rows]
+    probs: dict[str, list[float]] = {name: [] for name in PERTURBATIONS}
+    for row in rows:
+        img = load_image(row["path"])  # decode once, perturb many
+        for name, fn in PERTURBATIONS.items():
+            probs[name].append(detector.predict(fn(img)).prob_ai)
 
-    md = _to_markdown(["perturbation", "AUROC", "acc@0.5", "TPR@5%FPR"], table)
+    abstain = _abstainer(detector)
+    table = []
+    for name in PERTURBATIONS:
+        m = summarize(labels, probs[name])
+        table.append(
+            [
+                name,
+                _fmt(m["auroc"]),
+                _fmt(m["acc@0.5"]),
+                _fmt(m["tpr@5%fpr"]),
+                _fmt(abstain(probs[name])),
+            ]
+        )
+
+    md = _to_markdown(["perturbation", "AUROC", "acc@0.5", "TPR@5%FPR", "abstain"], table)
+    md += f"\n\n{_abstain_note(detector)}"
     if out_md:
-        Path(out_md).write_text(md + "\n")
+        Path(out_md).write_text(md + "\n", encoding="utf-8")
+    if scores_csv:
+        _write_scores(
+            scores_csv,
+            ["path", "label", "generator", "perturbation", "prob_ai"],
+            [
+                [row["path"], row["label"], row["generator"], name, f"{probs[name][i]:.6f}"]
+                for name in PERTURBATIONS
+                for i, row in enumerate(rows)
+            ],
+        )
     return md

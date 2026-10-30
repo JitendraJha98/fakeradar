@@ -50,3 +50,34 @@ def test_scan_no_images_is_a_usage_error(tmp_path):
     result = runner.invoke(app, ["scan", str(tmp_path), "--untrained-ok"])
     assert result.exit_code != 0
     assert "No supported images" in result.output
+
+
+def test_scan_reports_corrupt_files_and_continues(tmp_path):
+    good = tmp_path / "good.png"
+    Image.effect_noise((300, 300), 40).convert("RGB").save(good)
+    (tmp_path / "broken.jpg").write_bytes(b"not a jpeg")
+
+    result = runner.invoke(app, ["scan", str(tmp_path), "--untrained-ok", "--json"])
+    assert result.exit_code == 1  # some files failed
+    payload = json.loads(result.output[result.output.index("[") :])
+    by_name = {p["source"].replace("\\", "/").rsplit("/", 1)[-1]: p for p in payload}
+    assert 0.0 <= by_name["good.png"]["prob_ai"] <= 1.0
+    assert "error" in by_name["broken.jpg"]
+
+
+def test_benchmark_without_weights_is_a_clean_error(tmp_path):
+    manifest = tmp_path / "m.csv"
+    manifest.write_text("path,label\nx.png,0\n")
+    result = runner.invoke(app, ["benchmark", str(manifest)])
+    assert result.exit_code != 0
+    assert "No weights given" in result.output and "Traceback" not in result.output
+
+
+def test_non_checkpoint_file_is_a_clean_error(tmp_path):
+    bogus = tmp_path / "bogus.pt"
+    torch.save({"weights": torch.zeros(1)}, bogus)
+    img = tmp_path / "x.png"
+    Image.new("RGB", (300, 300)).save(img)
+    result = runner.invoke(app, ["scan", str(img), "--checkpoint", str(bogus)])
+    assert result.exit_code != 0
+    assert "not a fakeradar checkpoint" in result.output

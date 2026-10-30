@@ -16,6 +16,8 @@ def _validate(y_true, y_score) -> tuple[np.ndarray, np.ndarray]:
     s = np.asarray(y_score, dtype=np.float64).ravel()
     if y.shape != s.shape:
         raise ValueError("y_true and y_score must have the same shape")
+    if not np.isfinite(s).all():  # NaN sorts arbitrarily -> plausible-looking garbage metrics
+        raise ValueError(f"y_score contains {int((~np.isfinite(s)).sum())} NaN/inf value(s)")
     return y, s
 
 
@@ -88,6 +90,15 @@ def expected_calibration_error(y_true, y_score, n_bins: int = 10) -> float:
         if mask.any():
             ece += mask.mean() * abs(y[mask].mean() - s[mask].mean())
     return float(ece)
+
+
+def abstention_rate(y_score, threshold_real: float, threshold_fake: float) -> float:
+    """Fraction of scores in the open `uncertain` band (threshold_real, threshold_fake)
+    — exactly the images `Detector.predict` labels `uncertain`."""
+    s = np.asarray(y_score, dtype=np.float64).ravel()
+    if not np.isfinite(s).all():
+        raise ValueError("y_score contains NaN/inf value(s)")
+    return float(((s > threshold_real) & (s < threshold_fake)).mean())
 
 
 def summarize(y_true, y_score) -> dict[str, float]:

@@ -1,0 +1,28 @@
+# Training config for the ACCURATE tier (frozen CLIP ViT-B + forensic branches)
+# on a single GPU. Needs `pip install 'fakeradar[semantic]'`; the CLIP weights
+# download once on first run. Same GenImage SD1.4 protocol/manifests as
+# train_fast.yaml. Only the forensic branches, CLIP projection and fusion head
+# train — the ViT stays frozen (that is what preserves its generalization).
+detector: configs/accurate.yaml   # a detector YAML (CWD- or this-file-relative) or a preset: fast|accurate
+
+data:
+  train_manifest: data/manifests/genimage_stable_diffusion_v_1_4_train.csv
+  val_manifest: data/manifests/genimage_stable_diffusion_v_1_4_val.csv
+  num_workers: 8
+
+optim:
+  epochs: 10
+  batch_size: 32
+  lr: 2.0e-4
+  weight_decay: 0.05
+  warmup_steps: 500
+  amp: true
+  grad_clip: 1.0
+  aux_loss_weight: 0.3
+
+run:
+  out_dir: runs/accurate_v0
+  device: auto      # auto (cuda if available, else cpu) | cuda | cuda:1 | cpu | mps
+  seed: 42
+  log_every: 50
+  calibrate: true   # fit the output temperature on the val split after training

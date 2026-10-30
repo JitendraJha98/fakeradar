@@ -50,7 +50,7 @@ class DetectionResult:
         }
 
 
-def _auto_device() -> str:
+def auto_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -70,7 +70,7 @@ class Detector:
         device: str = "auto",
         allow_random_init: bool = False,
     ):
-        self.device = _auto_device() if device == "auto" else device
+        self.device = auto_device() if device == "auto" else device
         self.trained = True
 
         if checkpoint is not None:
@@ -97,10 +97,8 @@ class Detector:
         img = load_image(source)
         crops = extract_crops(img, self.config.crop_size, self.config.max_crops).to(self.device)
 
-        semantic = None
-        for name in self.model.resized_branch_names:
-            semantic = self.model.branches[name].preprocess(img).to(self.device)
-            break  # one global semantic view shared by resized branches
+        pre = self.model.semantic_preprocessor()
+        semantic = pre(img).to(self.device) if pre is not None else None
 
         out = self.model(crops, semantic)
         logit = out["logit"].mean()  # aggregate crops in logit space

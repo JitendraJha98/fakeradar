@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,13 @@ class FakeRadarModel(nn.Module):
     def resized_branch_names(self) -> list[str]:
         return [n for n, b in self.branches.items() if b.input_kind == "resized"]
 
+    def semantic_preprocessor(self) -> Callable | None:
+        """Picklable PIL -> (1,3,S,S) callable for the global view, or None for
+        crop-only models. One global view is shared by all resized branches."""
+        for name in self.resized_branch_names:
+            return self.branches[name].preprocessor()
+        return None
+
     def forward(self, crop: torch.Tensor, semantic: torch.Tensor | None = None) -> dict[str, Any]:
         feats: dict[str, torch.Tensor] = {}
         for name in self.crop_branch_names:
@@ -51,11 +60,18 @@ class FakeRadarModel(nn.Module):
 
 
 # ------------------------------------------------------------------ ckpt io
+CHECKPOINT_FORMAT = "fakeradar.v1"
+_CORE_KEYS = {"format", "fakeradar_version", "config", "state_dict"}
+
+
 def save_checkpoint(model: FakeRadarModel, path: str | Path, extra: dict | None = None) -> None:
+    from . import __version__
+
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "format": "fakeradar.v1",
+            "format": CHECKPOINT_FORMAT,
+            "fakeradar_version": __version__,
             "config": model.config.to_dict(),
             "state_dict": model.state_dict(),
             **(extra or {}),
@@ -64,14 +80,39 @@ def save_checkpoint(model: FakeRadarModel, path: str | Path, extra: dict | None 
     )
 
 
-def load_checkpoint(path: str | Path, map_location: str = "cpu") -> FakeRadarModel:
+def read_checkpoint(path: str | Path, map_location: str = "cpu") -> dict[str, Any]:
+    """Raw checkpoint dict (weights_only=True), format-checked."""
     ckpt = torch.load(path, map_location=map_location, weights_only=True)
+    if not isinstance(ckpt, dict) or ckpt.get("format") != CHECKPOINT_FORMAT:
+        raise ValueError(
+            f"{path} is not a fakeradar checkpoint (expected format {CHECKPOINT_FORMAT!r})."
+        )
+    return ckpt
+
+
+def checkpoint_extras(ckpt: dict[str, Any]) -> dict[str, Any]:
+    """Everything except the model itself (epoch, val metrics, calibration, ...)."""
+    return {k: v for k, v in ckpt.items() if k not in _CORE_KEYS}
+
+
+def load_checkpoint(path: str | Path, map_location: str = "cpu") -> FakeRadarModel:
+    return model_from_checkpoint(read_checkpoint(path, map_location))
+
+
+def model_from_checkpoint(ckpt: dict[str, Any]) -> FakeRadarModel:
+    """Build + load a model from a dict returned by `read_checkpoint`."""
     config = DetectorConfig.from_dict(ckpt["config"])
     model = FakeRadarModel(config)
     missing, unexpected = model.load_state_dict(ckpt["state_dict"], strict=False)
     if missing or unexpected:
         print(
             f"[fakeradar] checkpoint loaded with missing={len(missing)} unexpected={len(unexpected)} keys"
+        )
+    t = float(model.fusion.temperature)
+    if not (math.isfinite(t) and t > 0):
+        raise ValueError(
+            f"checkpoint has an invalid calibration temperature ({t}); "
+            "re-run `fakeradar calibrate` on held-out data."
         )
     return model
 
@@ -172,6 +213,6 @@ def verify_onnx_parity(
     sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     got = sess.run(None, {"crop": x.numpy()})[0]
     diff = float(np.abs(got.ravel() - ref.ravel()).max())
-    if diff > atol:
+    if not diff <= atol:  # also catches NaN
         raise RuntimeError(f"ONNX parity check failed: max abs prob diff {diff:.3g} > {atol}")
     return diff

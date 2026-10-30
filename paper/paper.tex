@@ -248,8 +248,9 @@ h = \textstyle\sum_b \alpha_b z_b, \qquad
 s = \mathrm{MLP}(h), \qquad
 \hat p = \sigma(s/T),
 \end{equation}
-with temperature $T$ fitted post hoc on validation
-data~\cite{guo2017calibration}. Auxiliary heads give per-branch logits $s_b$;
+with temperature $T$ fitted post hoc~\cite{guo2017calibration} on a
+stratified hold-out of the \emph{training} generator's data (never on test
+data), using the same crop-averaged logit that is scored at inference. Auxiliary heads give per-branch logits $s_b$;
 the loss is
 \begin{equation}
 \mathcal{L} = \mathrm{BCE}(y, s) + \frac{\lambda}{B}\sum_b \mathrm{BCE}(y, s_b),
@@ -298,7 +299,8 @@ and abstention rate at $(\tau_r,\tau_f) = (0.35, 0.65)$.
 
 \paragraph{Implementation.} PyTorch; single NVIDIA A100 40GB; AdamW
 (lr $2{\times}10^{-4}$, weight decay $0.05$), cosine schedule with $500$-step
-warmup, batch $64$, $10$ epochs, mixed precision; crop $S{=}256$; the
+warmup, batch $64$, $10$ epochs, mixed precision (the fixed forensic
+front-end is always computed in fp32); crop $S{=}256$; the
 semantic backbone contributes no gradients. The fast tier (gradient +
 frequency) has ${\sim}12$M trainable parameters; the accurate tier adds the
 frozen ViT-B ($+86$M frozen, $+0.6$M trainable). Full configuration files

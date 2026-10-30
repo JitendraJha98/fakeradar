@@ -122,7 +122,19 @@ class GradientFieldBranch(DetectionBranch):
 
     # ---------------------------------------------------------------- stacks
     def forensic_stack(self, x: torch.Tensor) -> torch.Tensor:
-        """Build the (B, C, H, W) stack of gradient-domain residual maps."""
+        """Build the (B, C, H, W) stack of gradient-domain residual maps.
+
+        Always computed in fp32, even under AMP autocast: the residuals are
+        faint and the coherence ratio divides near-zero structure-tensor
+        terms — in fp16 the maps drift by O(1) vs fp32, so a model trained
+        with CUDA AMP would learn on different features than fp32 inference
+        sees. The front-end is fixed (no trainable params), so this is cheap;
+        the ResNet encoder still runs in mixed precision.
+        """
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            return self._forensic_stack(x.float())
+
+    def _forensic_stack(self, x: torch.Tensor) -> torch.Tensor:
         B, C, H, W = x.shape
         srm = F.conv2d(x, self.srm, padding=2, groups=3)  # (B,12,H,W)
 

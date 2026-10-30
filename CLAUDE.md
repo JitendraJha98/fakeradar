@@ -19,10 +19,12 @@ ruff check src tests                       # lint (matches CI)
 ruff format src tests                      # format (pre-commit runs ruff --fix + ruff-format)
 
 fakeradar scan photo.jpg folder/ --untrained-ok   # smoke-test the pipeline with random weights
+fakeradar prepare-genimage /data/GenImage -g stable_diffusion_v_1_4 -t all   # train/val/test manifests
 fakeradar train configs/train_fast.yaml             # auto-calibrates best.pt on the val split
+fakeradar train configs/train_fast.yaml --resume runs/fast_v0/last.pt
 fakeradar calibrate val.csv --checkpoint best.pt    # re-fit temperature on new held-out data
-fakeradar benchmark val.csv --checkpoint best.pt
-fakeradar robustness val.csv --checkpoint best.pt   # re-eval under JPEG/resize/blur
+fakeradar benchmark test.csv --checkpoint best.pt --scores-csv s.csv   # + raw per-image scores
+fakeradar robustness test.csv --checkpoint best.pt  # re-eval under JPEG/resize/blur
 fakeradar export-onnx best.pt fast.onnx             # torch>=2.9; parity-checked if onnxruntime present
 fakeradar serve --checkpoint best.pt                # local REST API, POST /v1/detect
 ```
@@ -37,8 +39,9 @@ The core abstraction is a **branch** = one forensic view. Data flows: image → 
 
 - **`branches/`** — each branch subclasses `DetectionBranch` (`branches/base.py`) and self-registers via `@register_branch("name")` into `BRANCH_REGISTRY`. A branch declares `feature_dim` and `input_kind`:
   - `input_kind="crop"` (gradient, frequency): receives **native-resolution crops, never resized** — resizing destroys the high-frequency traces these branches depend on. This is a load-bearing design invariant, not a detail.
-  - `input_kind="resized"` (semantic/CLIP): receives its own resized global view via the branch's `preprocess()`.
-- **`fusion.py` `FusionHead`** — projects each branch to a shared embedding, combines them with a **learned softmax gate** (exposed as `gate_weights` for interpretability), emits a main logit plus **auxiliary per-branch logits** (deep supervision + "which branch fired" reporting). Holds a `temperature` buffer for post-hoc calibration (fit by `evaluation/calibrate.py` via the `fakeradar calibrate` command, or automatically after training).
+  - `input_kind="resized"` (semantic/CLIP): receives its own resized global view via the branch's `preprocessor()` — a *picklable* callable that must not capture the module (DataLoader workers would otherwise get a copy of the backbone). `FakeRadarModel.semantic_preprocessor()` is the single accessor.
+  - The gradient branch's fixed forensic front-end always runs in **fp32** (autocast disabled) — fp16 corrupts the coherence channel and would make AMP-trained features differ from inference.
+- **`fusion.py` `FusionHead`** — projects each branch to a shared embedding, combines them with a **learned softmax gate** (exposed as `gate_weights` for interpretability), emits a main logit plus **auxiliary per-branch logits** (deep supervision + "which branch fired" reporting). Holds a `temperature` buffer for post-hoc calibration (fit by `evaluation/calibrate.py` via the `fakeradar calibrate` command, or automatically after training). The fit is a bounded grid search over T in [0.05, 20], and calibration logits are collected with the **inference protocol** (mean over the crop grid via `ManifestDataset(max_crops=...)`), never single center crops — keep those in lockstep with `Detector.predict`.
 - **`models.py` `FakeRadarModel`** — assembles enabled branches + fusion into one `nn.Module`; splits inputs by `crop_branch_names` / `resized_branch_names`. Also owns checkpoint I/O (format `"fakeradar.v1"`, loaded `weights_only=True`, `strict=False`), the `MODEL_ZOO` (HF Hub) registry, and ONNX export. **ONNX export only supports crop-only (fast tier) models**, needs torch>=2.9 (dynamo exporter), and runs a warmup forward first so the frequency branch's `bincount` is baked as a constant — keep that warmup if you touch the export path. `verify_onnx_parity` checks the exported graph against eager torch.
 - **`detector.py` `Detector`** — the high-level API. Loads a tier + weights, runs `predict()` (extracts up to `max_crops` crops, aggregates logits by mean, applies temperature, thresholds into `real`/`uncertain`/`ai`). Returns a `DetectionResult` dataclass. Requires real weights unless `allow_random_init=True`.
 - **`cli.py`** — Typer app; **torch imports happen inside each command** so `fakeradar --help` stays instant. Keep that pattern when adding commands.
@@ -52,15 +55,15 @@ Subclass `DetectionBranch`, decorate with `@register_branch("yourname")`, set `f
 Do not confuse them:
 
 1. **Detector config** (`configs/fast.yaml`, `configs/accurate.yaml`) → `DetectorConfig` in `config.py`. Describes tier, crop size, thresholds, which branches are enabled, fusion dims. **The built-in presets in `config.py` (`_FAST`/`_ACCURATE`, `get_preset`) are the source of truth** so the installed package works with no external files; the YAMLs mirror them. Keep both in sync when changing a preset.
-2. **Training config** (`configs/train_fast.yaml`) → consumed by `training/train.py`. It's a *wrapper*: a top-level `detector:` key that is a **path to a detector YAML**, plus `data`, `optim`, `run` blocks. `train()` loads the detector config from that path.
+2. **Training config** (`configs/train_fast.yaml`, `configs/train_accurate.yaml`) → consumed by `training/train.py`. It's a *wrapper*: a top-level `detector:` key (a detector YAML path — CWD- or config-relative — an inline mapping, or a preset name `fast`/`accurate`; see `resolve_detector_config`), plus `data`, `optim`, `run` blocks.
 
 Tiers: `fast` = gradient + frequency, ~12M params, fully offline, CPU-friendly. `accurate` = adds the frozen CLIP ViT-B semantic branch (needs the `semantic` extra / `timm`, downloads weights once).
 
 ## Training
 
-`training/train.py` is single-GPU (or CPU for smoke tests): AMP, cosine LR with warmup, main BCE + weighted auxiliary per-branch BCE, best checkpoint chosen by val AUROC. Datasets come from CSV manifests (`path,label[,generator]`) via `training/datasets.py`; `training/augment.py` is the transport-chain augmenter (JPEG/WebP/resize/blur/noise) applied to every training image — robustness is treated as a training-time property. `scripts/prepare_genimage.py` builds manifests from a GenImage download.
+`training/train.py` is single-GPU (or CPU for smoke tests): AMP, cosine LR with warmup, main BCE + weighted auxiliary per-branch BCE, best checkpoint chosen by val AUROC; `last.pt` holds optimizer/scheduler/scaler state for `--resume`. Datasets come from CSV manifests (`path,label[,generator]`) via `training/datasets.py`; `training/augment.py` is the transport-chain augmenter (JPEG/WebP/resize/blur/noise) applied to every training image — robustness is treated as a training-time property. `training/genimage.py` (`fakeradar prepare-genimage`; `scripts/prepare_genimage.py` wraps it) builds manifests from a GenImage download.
 
-The benchmark protocol is deliberately cross-generator: train on one generator, evaluate on all + perturbed sets. Robustness tables are published alongside every release.
+The benchmark protocol is deliberately cross-generator: train on one generator, evaluate on all + perturbed sets. **GenImage's `val` split is the test set** — model selection and calibration use the `*_val.csv` hold-out carved from the training split; never select or calibrate on `*_test.csv`. Robustness tables (with `--scores-csv` raw scores) are published alongside every release.
 
 ## Conventions
 

@@ -25,7 +25,16 @@ def load_image(source) -> Image.Image:
     """Accept a path / Path / PIL image and return a PIL RGB image."""
     if isinstance(source, Image.Image):
         return source.convert("RGB")
-    return Image.open(Path(source)).convert("RGB")
+    with Image.open(Path(source)) as img:  # closes the file handle after decode
+        return img.convert("RGB")
+
+
+def semantic_view(img: Image.Image, size: int) -> torch.Tensor:
+    """PIL RGB image -> (1, 3, size, size) resized + center-cropped global view
+    in [0,1] (semantic branches only — forensic branches never see this)."""
+    img = TF.resize(img, size, antialias=True)
+    img = TF.center_crop(img, [size, size])
+    return TF.to_tensor(img).unsqueeze(0)
 
 
 def crop_positions(w: int, h: int, size: int, max_crops: int) -> list[tuple[int, int]]:

@@ -39,3 +39,18 @@ def test_tpr_at_fpr_and_ece_and_summary():
     assert 0.0 <= expected_calibration_error(y, s) <= 1.0
     m = summarize(y, s)
     assert m["auroc"] == 1.0 and 0 <= m["ece"] <= 1
+
+
+def test_abstention_rate_matches_detector_band():
+    from fakeradar.evaluation.metrics import abstention_rate
+
+    # the band is open: exactly-on-threshold scores get a verdict, not `uncertain`
+    s = np.array([0.1, 0.35, 0.5, 0.64, 0.65, 0.9])
+    assert abstention_rate(s, 0.35, 0.65) == 2 / 6
+
+
+def test_nan_scores_are_rejected_not_silently_ranked():
+    import pytest
+
+    with pytest.raises(ValueError, match="NaN"):
+        roc_auc(np.array([0, 1]), np.array([0.2, np.nan]))

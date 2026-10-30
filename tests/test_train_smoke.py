@@ -100,3 +100,60 @@ def test_train_end_to_end_with_calibration(tmp_path):
     cal = ckpt.get("calibration")
     assert cal is not None and cal["temperature"] > 0
     assert float(model.fusion.temperature) == pytest.approx(cal["temperature"], rel=1e-5)
+
+
+def _train_yaml(tmp_path, train_csv, val_csv, epochs, detector=None):
+    path = tmp_path / f"train_{epochs}.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "detector": detector or TINY_DETECTOR,
+                "data": {
+                    "train_manifest": str(train_csv),
+                    "val_manifest": str(val_csv),
+                    "num_workers": 0,
+                },
+                "optim": {
+                    "epochs": epochs,
+                    "batch_size": 2,
+                    "lr": 1.0e-3,
+                    "weight_decay": 0.0,
+                    "amp": False,
+                },
+                "run": {"out_dir": str(tmp_path / "run"), "seed": 0, "calibrate": False},
+            }
+        )
+    )
+    return path
+
+
+def test_resume_continues_from_last_checkpoint(tmp_path):
+    rows = _make_dataset(tmp_path, n_per_class=2)
+    csv_path = tmp_path / "m.csv"
+    _write_manifest(csv_path, rows)
+
+    train(_train_yaml(tmp_path, csv_path, csv_path, epochs=1))
+    last = tmp_path / "run" / "last.pt"
+    first = torch.load(last, map_location="cpu", weights_only=True)
+    assert first["epoch"] == 0 and "optimizer" in first
+
+    train(_train_yaml(tmp_path, csv_path, csv_path, epochs=2), resume=last)
+    second = torch.load(last, map_location="cpu", weights_only=True)
+    assert second["epoch"] == 1 and second["step"] == 2 * first["step"]
+    with open(tmp_path / "run" / "metrics.csv", newline="") as f:
+        assert [r[0] for r in csv.reader(f)] == ["epoch", "0", "1"]  # appended, not rewritten
+
+    # a checkpoint without optimizer state (e.g. best.pt) is not resumable
+    with pytest.raises(ValueError, match="optimizer"):
+        train(
+            _train_yaml(tmp_path, csv_path, csv_path, epochs=3), resume=tmp_path / "run" / "best.pt"
+        )
+
+
+def test_single_class_val_manifest_fails_fast(tmp_path):
+    rows = _make_dataset(tmp_path, n_per_class=2)
+    train_csv, val_csv = tmp_path / "train.csv", tmp_path / "val.csv"
+    _write_manifest(train_csv, rows)
+    _write_manifest(val_csv, [r for r in rows if r[1] == 1])
+    with pytest.raises(ValueError, match="both real"):
+        train(_train_yaml(tmp_path, train_csv, val_csv, epochs=1))

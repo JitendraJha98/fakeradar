@@ -14,8 +14,14 @@ Design choices:
 
 from __future__ import annotations
 
+import math
+import warnings
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+T_MIN, T_MAX = 0.05, 20.0  # sane range for the calibration temperature
 
 
 class FusionHead(nn.Module):
@@ -61,22 +67,36 @@ class FusionHead(nn.Module):
     def probability(self, logit: torch.Tensor) -> torch.Tensor:
         return torch.sigmoid(logit / self.temperature)
 
+    @torch.no_grad()
     def fit_temperature(
-        self, logits: torch.Tensor, labels: torch.Tensor, steps: int = 200
+        self, logits: torch.Tensor, labels: torch.Tensor, n_grid: int = 2001
     ) -> float:
-        """Simple temperature scaling on held-out (logits, labels)."""
-        logits = logits.detach().float()
-        labels = labels.detach().float()
-        log_t = torch.zeros(1, device=logits.device, requires_grad=True)
-        opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=steps)
-        bce = nn.BCEWithLogitsLoss()
+        """Temperature scaling on held-out (logits, labels).
 
-        def closure():
-            opt.zero_grad()
-            loss = bce(logits / log_t.exp(), labels)
-            loss.backward()
-            return loss
-
-        opt.step(closure)
-        self.temperature.fill_(float(log_t.exp().clamp(0.05, 20.0).item()))
+        The NLL is convex in 1/T, so a dense log-spaced grid over the allowed
+        range [T_MIN, T_MAX] finds the global optimum deterministically
+        (resolution ~0.3%). This replaces an unbounded LBFGS fit that diverged
+        to T=NaN on perfectly separable held-out sets (where the optimum is
+        T -> 0), silently turning every later prediction into NaN.
+        """
+        logits = logits.detach().float().flatten()
+        labels = labels.detach().float().flatten().to(logits.device)
+        if not torch.isfinite(logits).all():
+            raise ValueError("Cannot calibrate: logits contain NaN/inf.")
+        temps = torch.logspace(math.log10(T_MIN), math.log10(T_MAX), n_grid, device=logits.device)
+        temps = temps.clamp(T_MIN, T_MAX)  # float32 logspace endpoints round just outside
+        nll = torch.empty_like(temps)
+        for i in range(0, n_grid, 256):  # chunked: bounded memory on large val sets
+            t = temps[i : i + 256, None]
+            nll[i : i + 256] = F.binary_cross_entropy_with_logits(
+                logits[None, :] / t, labels.expand(t.shape[0], -1), reduction="none"
+            ).mean(dim=1)
+        best = int(torch.argmin(nll))
+        if best in (0, n_grid - 1):
+            warnings.warn(
+                f"fitted temperature hit the bound T={float(temps[best]):g} "
+                "(held-out set perfectly separable or tiny?); calibration is unreliable.",
+                stacklevel=3,  # past the no_grad wrapper, to the caller
+            )
+        self.temperature.fill_(float(temps[best]))
         return float(self.temperature.item())

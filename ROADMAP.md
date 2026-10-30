@@ -6,13 +6,15 @@ Effort estimates assume one engineer, part-time, one A100.
 - [x] Modular pipeline: gradient + frequency + optional CLIP branch, gated fusion
 - [x] Robustness-first training, native-res multi-crop inference
 - [x] CLI, REST API, ONNX export, CI, tests
+- [x] GenImage manifest builder with leak-free train / val / test protocol
+- [x] Resumable training, raw-score CSVs for every published table
 - [ ] Train `fast` tier on GenImage SD1.4-only protocol (A100, ~2–4h)
 - [ ] Publish weights to HF Hub + cross-generator & robustness tables
 - [ ] PyPI release
 
 ## v0.2 — Accuracy tier + demo (2–3 weekends)
-- [ ] Train `accurate` tier (frozen CLIP ViT-B fusion)
-- [ ] Temperature calibration on held-out val; report ECE
+- [ ] Train `accurate` tier (frozen CLIP ViT-B fusion) — `configs/train_accurate.yaml` ready
+- [x] Temperature calibration on held-out val; report ECE
 - [ ] Hugging Face Space demo (Gradio, `demo/app.py`)
 - [ ] ONNX int8 quantization + CPU latency table
 

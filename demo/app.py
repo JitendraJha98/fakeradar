@@ -2,33 +2,49 @@
 
     pip install 'fakeradar[demo]'
     python demo/app.py --checkpoint runs/fast_v0/best.pt
+    python demo/app.py --pretrained fast-v0          # needs 'fakeradar[hub]'
+
+A Space runs `app.py` with no arguments: configure it with the
+FAKERADAR_CHECKPOINT or FAKERADAR_PRETRAINED environment variables instead.
 """
 
 import argparse
+import os
 
 import gradio as gr
 
 from fakeradar import Detector
 
+VERDICT_TEXT = {"likely_ai": "Likely AI-generated", "likely_real": "Likely real", "uncertain": "Uncertain"}
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--checkpoint", default=os.environ.get("FAKERADAR_CHECKPOINT"))
+    ap.add_argument("--pretrained", default=os.environ.get("FAKERADAR_PRETRAINED"))
     ap.add_argument("--untrained-ok", action="store_true")
     args = ap.parse_args()
 
-    det = Detector(checkpoint=args.checkpoint, allow_random_init=args.untrained_ok)
+    det = Detector(
+        checkpoint=args.checkpoint,
+        pretrained=None if args.checkpoint else args.pretrained,
+        allow_random_init=args.untrained_ok,
+    )
 
     def score(img):
+        if img is None:
+            return {}, ""
         r = det.predict(img)
-        label = {"likely_ai": "AI-generated", "likely_real": "Real", "uncertain": "Uncertain"}[r.verdict]
-        detail = "\n".join(f"{k}: {v:.3f}" for k, v in r.per_branch.items())
-        return {label: r.prob_ai if r.verdict == "likely_ai" else 1 - r.prob_ai}, detail
+        lines = [f"verdict: {VERDICT_TEXT[r.verdict]}"]
+        lines += [f"{k}: {v:.3f}" for k, v in r.per_branch.items()]
+        if not r.trained:
+            lines.append("WARNING: random weights — scores are meaningless.")
+        return {"AI-generated": r.prob_ai, "Real": 1 - r.prob_ai}, "\n".join(lines)
 
     gr.Interface(
         fn=score,
         inputs=gr.Image(type="pil"),
-        outputs=[gr.Label(num_top_classes=1), gr.Textbox(label="per-branch scores")],
+        outputs=[gr.Label(num_top_classes=2, label="P(AI)"), gr.Textbox(label="details")],
         title="fakeradar — local AI-image detection",
         description="Probabilistic signal, not proof. Gradient-field + frequency + semantic fusion.",
     ).launch()

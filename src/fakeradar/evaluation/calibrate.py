@@ -4,6 +4,12 @@
 temperature on held-out logits and re-saves the checkpoint with the fitted
 value, reporting ECE before/after. `training/train.py` runs this automatically
 on the best checkpoint after training (config `run.calibrate`, default true).
+
+Logits are collected with the *deployment* protocol — the mean fused logit
+over the same native-res crop grid `Detector.predict` uses — so the fitted
+temperature applies to exactly the quantity it rescales at inference time.
+(Averaging K crop logits shrinks their spread; a temperature fit on single
+center crops would over-soften multi-crop predictions.)
 """
 
 from __future__ import annotations
@@ -13,7 +19,13 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from ..models import FakeRadarModel, load_checkpoint, save_checkpoint
+from ..models import (
+    FakeRadarModel,
+    checkpoint_extras,
+    model_from_checkpoint,
+    read_checkpoint,
+    save_checkpoint,
+)
 from ..training.datasets import ManifestDataset
 from .metrics import expected_calibration_error
 
@@ -22,28 +34,28 @@ from .metrics import expected_calibration_error
 def collect_logits(
     model: FakeRadarModel,
     manifest: str | Path,
-    batch_size: int = 32,
     num_workers: int = 0,
     device: str = "cpu",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Center-crop fused logits + labels for every manifest row (no augmentation)."""
-    semantic_pre = None
-    for name in model.resized_branch_names:
-        semantic_pre = model.branches[name].preprocess
-        break
+    """Per-image fused logits (mean over the inference crop grid) + labels."""
     ds = ManifestDataset(
-        manifest, model.config.crop_size, augment=False, semantic_preprocess=semantic_pre
+        manifest,
+        model.config.crop_size,
+        augment=False,
+        semantic_preprocess=model.semantic_preprocessor(),
+        max_crops=model.config.max_crops,
     )
-    dl = DataLoader(ds, batch_size=batch_size, num_workers=num_workers)
+    # batch_size=None: one image (K crops, K varies with image size) per step
+    dl = DataLoader(ds, batch_size=None, num_workers=num_workers)
     model.to(device).eval()
     logits, labels = [], []
-    for batch in dl:
-        semantic = batch.get("semantic")
-        semantic = semantic.to(device) if semantic is not None else None
-        out = model(batch["crop"].to(device), semantic)
-        logits.append(out["logit"].cpu())
-        labels.append(batch["label"])
-    return torch.cat(logits), torch.cat(labels)
+    for item in dl:
+        semantic = item.get("semantic")
+        semantic = semantic.unsqueeze(0).to(device) if semantic is not None else None
+        out = model(item["crops"].to(device), semantic)
+        logits.append(out["logit"].mean().cpu())
+        labels.append(item["label"])
+    return torch.stack(logits), torch.stack(labels)
 
 
 def calibrate_model(
@@ -69,14 +81,17 @@ def calibrate_checkpoint(
     checkpoint: str | Path,
     manifest: str | Path,
     out: str | Path | None = None,
-    batch_size: int = 32,
     num_workers: int = 0,
     device: str = "cpu",
 ) -> dict[str, float]:
     """Load a checkpoint, fit its temperature on `manifest`, save it back
-    (in place unless `out` is given) and return the calibration stats."""
-    model = load_checkpoint(checkpoint, map_location=device)
-    logits, labels = collect_logits(model, manifest, batch_size, num_workers, device)
+    (in place unless `out` is given) and return the calibration stats.
+    Other stored metadata (epoch, val metrics, ...) is preserved."""
+    ckpt = read_checkpoint(checkpoint, map_location=device)
+    model = model_from_checkpoint(ckpt)
+    logits, labels = collect_logits(model, manifest, num_workers, device)
     stats = calibrate_model(model, logits, labels)
-    save_checkpoint(model, out or checkpoint, extra={"calibration": stats})
+    save_checkpoint(
+        model, out or checkpoint, extra={**checkpoint_extras(ckpt), "calibration": stats}
+    )
     return stats

@@ -1,51 +1,43 @@
 #!/usr/bin/env python3
-"""Build fakeradar CSV manifests from a GenImage-style directory tree.
+"""Build fakeradar CSV manifests from a GenImage download.
 
-Expected layout (per GenImage release):
-    ROOT/<generator>/<split>/{ai,nature}/*.png|jpg
-Usage:
-    python scripts/prepare_genimage.py /data/GenImage --generators stable_diffusion_v_1_4 \
-        --out data/manifests
+Thin wrapper around `fakeradar prepare-genimage` (logic lives in
+fakeradar.training.genimage so pip installs get it too). Usage:
+
+    python scripts/prepare_genimage.py /data/GenImage \
+        --generators stable_diffusion_v_1_4 --test-generators all --out data/manifests
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 from pathlib import Path
 
-EXTS = {".jpg", ".jpeg", ".png", ".webp"}
-
-
-def rows_for(root: Path, generator: str, split: str):
-    for label_dir, label in (("nature", 0), ("ai", 1)):
-        base = root / generator / split / label_dir
-        if not base.is_dir():
-            continue
-        for p in sorted(base.rglob("*")):
-            if p.suffix.lower() in EXTS:
-                yield [str(p), label, generator if label else "real"]
+from fakeradar.training.genimage import build_manifests
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", type=Path)
-    ap.add_argument("--generators", nargs="+", required=True)
+    ap.add_argument("--generators", nargs="+", required=True, help="training generator(s)")
+    ap.add_argument("--test-generators", nargs="+", default=None, help="or 'all'")
     ap.add_argument("--out", type=Path, default=Path("data/manifests"))
+    ap.add_argument("--name", default=None)
+    ap.add_argument("--val-fraction", type=float, default=0.05)
+    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    for split, name in (("train", "train"), ("val", "val")):
-        out = args.out / f"genimage_{'_'.join(args.generators)}_{name}.csv"
-        with open(out, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["path", "label", "generator"])
-            n = 0
-            for gen in args.generators:
-                for row in rows_for(args.root, gen, split):
-                    w.writerow(row)
-                    n += 1
-        print(f"{out}: {n} rows")
+    result = build_manifests(
+        args.root,
+        args.generators,
+        args.test_generators,
+        args.out,
+        args.name,
+        args.val_fraction,
+        args.seed,
+    )
+    for path, n in result.values():
+        print(f"{path}: {n} rows")
 
 
 if __name__ == "__main__":
