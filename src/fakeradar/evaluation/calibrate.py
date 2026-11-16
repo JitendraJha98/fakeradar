@@ -36,6 +36,7 @@ def collect_logits(
     manifest: str | Path,
     num_workers: int = 0,
     device: str = "cpu",
+    equalize_jpeg_quality: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Per-image fused logits (mean over the inference crop grid) + labels."""
     ds = ManifestDataset(
@@ -44,6 +45,7 @@ def collect_logits(
         augment=False,
         semantic_preprocess=model.semantic_preprocessor(),
         max_crops=model.config.max_crops,
+        equalize_jpeg_quality=equalize_jpeg_quality,
     )
     # batch_size=None: one image (K crops, K varies with image size) per step
     dl = DataLoader(ds, batch_size=None, num_workers=num_workers)
@@ -83,13 +85,14 @@ def calibrate_checkpoint(
     out: str | Path | None = None,
     num_workers: int = 0,
     device: str = "cpu",
+    equalize_jpeg_quality: int | None = None,
 ) -> dict[str, float]:
     """Load a checkpoint, fit its temperature on `manifest`, save it back
     (in place unless `out` is given) and return the calibration stats.
     Other stored metadata (epoch, val metrics, ...) is preserved."""
     ckpt = read_checkpoint(checkpoint, map_location=device)
     model = model_from_checkpoint(ckpt)
-    logits, labels = collect_logits(model, manifest, num_workers, device)
+    logits, labels = collect_logits(model, manifest, num_workers, device, equalize_jpeg_quality)
     stats = calibrate_model(model, logits, labels)
     save_checkpoint(
         model, out or checkpoint, extra={**checkpoint_extras(ckpt), "calibration": stats}

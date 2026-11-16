@@ -27,7 +27,7 @@ from pathlib import Path
 from PIL import Image, ImageFilter
 
 from ..detector import Detector
-from ..preprocessing import load_image
+from ..preprocessing import load_image_equalized
 from ..training.datasets import read_manifest
 from .metrics import abstention_rate, summarize
 
@@ -83,14 +83,27 @@ def _write_scores(path: str | Path, header: list[str], rows: list[list]) -> None
         w.writerows(rows)
 
 
+def _equalize_note(quality: int | None) -> str:
+    if quality is None:
+        return "Compression history not equalized: images scored as stored."
+    return (
+        "Compression history equalized: images not stored as JPEG were JPEG-encoded once "
+        f"at JPEG quality {quality} before scoring."
+    )
+
+
 def run_benchmark(
     detector: Detector,
     manifest: str | Path,
     out_md: str | Path | None = None,
     scores_csv: str | Path | None = None,
+    equalize_jpeg_quality: int | None = None,
 ) -> str:
     rows = read_manifest(manifest)
-    probs = [detector.predict(row["path"]).prob_ai for row in rows]
+    probs = [
+        detector.predict(load_image_equalized(row["path"], equalize_jpeg_quality)).prob_ai
+        for row in rows
+    ]
     labels = [row["label"] for row in rows]
 
     real_probs = [p for p, y in zip(probs, labels, strict=True) if y == 0]
@@ -121,6 +134,7 @@ def run_benchmark(
     headers = ["generator", "n_fake", "AUROC", "AP", "acc@0.5", "TPR@5%FPR", "ECE", "abstain"]
     md = _to_markdown(headers, table)
     md += f"\n\n{len(real_probs)} real images pooled against each generator. {_abstain_note(detector)}"
+    md += f" {_equalize_note(equalize_jpeg_quality)}"
     if out_md:
         Path(out_md).write_text(md + "\n", encoding="utf-8")
     if scores_csv:
@@ -140,12 +154,13 @@ def run_robustness(
     manifest: str | Path,
     out_md: str | Path | None = None,
     scores_csv: str | Path | None = None,
+    equalize_jpeg_quality: int | None = None,
 ) -> str:
     rows = read_manifest(manifest)
     labels = [row["label"] for row in rows]
     probs: dict[str, list[float]] = {name: [] for name in PERTURBATIONS}
     for row in rows:
-        img = load_image(row["path"])  # decode once, perturb many
+        img = load_image_equalized(row["path"], equalize_jpeg_quality)  # decode once
         for name, fn in PERTURBATIONS.items():
             probs[name].append(detector.predict(fn(img)).prob_ai)
 
@@ -164,7 +179,7 @@ def run_robustness(
         )
 
     md = _to_markdown(["perturbation", "AUROC", "acc@0.5", "TPR@5%FPR", "abstain"], table)
-    md += f"\n\n{_abstain_note(detector)}"
+    md += f"\n\n{_abstain_note(detector)} {_equalize_note(equalize_jpeg_quality)}"
     if out_md:
         Path(out_md).write_text(md + "\n", encoding="utf-8")
     if scores_csv:

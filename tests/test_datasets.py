@@ -112,3 +112,16 @@ def test_multi_crop_eval_matches_inference_grid(tmp_path):
 
     with pytest.raises(ValueError, match="incompatible"):
         ManifestDataset(manifest, crop_size=64, augment=True, max_crops=4)
+
+
+def test_equalizing_compression_changes_lossless_rows_only(tmp_path):
+    png, jpg = tmp_path / "fake.png", tmp_path / "real.jpg"
+    Image.effect_noise((96, 96), 60).convert("RGB").save(png)
+    Image.effect_noise((96, 96), 60).convert("RGB").save(jpg, quality=92)
+    manifest = tmp_path / "m.csv"
+    manifest.write_text(f"path,label\n{jpg},0\n{png},1\n")
+    off = ManifestDataset(manifest, crop_size=64, augment=False)
+    on = ManifestDataset(manifest, crop_size=64, augment=False, equalize_jpeg_quality=96)
+    assert torch.equal(off[0]["crop"], on[0]["crop"])  # already a JPEG: untouched
+    assert not torch.equal(off[1]["crop"], on[1]["crop"])  # PNG: one JPEG pass added
+    assert on[1]["crop"].shape == (3, 64, 64)

@@ -59,3 +59,35 @@ def test_robustness_table_and_raw_scores(detector, manifest, tmp_path):
     with open(scores, newline="") as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 5 * len(PERTURBATIONS)
+
+
+def _scores(path):
+    with open(path, newline="") as f:
+        return [float(r["prob_ai"]) for r in csv.DictReader(f)]
+
+
+def test_benchmark_equalized_changes_png_scores_and_says_so(detector, manifest, tmp_path):
+    raw, eq = tmp_path / "raw.csv", tmp_path / "eq.csv"
+    md_raw = run_benchmark(detector, manifest, scores_csv=raw)
+    md_eq = run_benchmark(detector, manifest, scores_csv=eq, equalize_jpeg_quality=96)
+    assert _scores(raw) != _scores(eq)  # every source in this manifest is a PNG
+    assert "JPEG quality 96" in md_eq and "not equalized" in md_raw
+
+
+def test_benchmark_equalized_leaves_jpeg_sources_alone(detector, tmp_path):
+    lines = ["path,label,generator"]
+    for i, (gen, label) in enumerate([("real", 0), ("sd14", 1)]):
+        p = tmp_path / f"{i}.jpg"
+        Image.effect_noise((96, 96), 30 + 40 * i).convert("RGB").save(p, quality=90)
+        lines.append(f"{p},{label},{gen}")
+    m = tmp_path / "jpeg.csv"
+    m.write_text("\n".join(lines) + "\n")
+    raw, eq = tmp_path / "raw.csv", tmp_path / "eq.csv"
+    run_benchmark(detector, m, scores_csv=raw)
+    run_benchmark(detector, m, scores_csv=eq, equalize_jpeg_quality=96)
+    assert _scores(raw) == _scores(eq)
+
+
+def test_robustness_accepts_the_equalize_setting(detector, manifest, tmp_path):
+    md = run_robustness(detector, manifest, equalize_jpeg_quality=96)
+    assert "JPEG quality 96" in md

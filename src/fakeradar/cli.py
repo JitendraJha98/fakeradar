@@ -180,6 +180,9 @@ def calibrate(
     ),
     num_workers: int = typer.Option(0, help="DataLoader workers for image decoding."),
     device: str = typer.Option("auto", help=_DEVICE_HELP),
+    equalize_jpeg: int = typer.Option(
+        None, help="JPEG-encode non-JPEG images once at this quality before scoring."
+    ),
 ):
     """Fit the output temperature on held-out data (calibrated P(AI), lower ECE)."""
     from .detector import auto_device
@@ -191,6 +194,7 @@ def calibrate(
         out=out,
         num_workers=num_workers,
         device=auto_device() if device == "auto" else device,
+        equalize_jpeg_quality=equalize_jpeg,
     )
     console.print(
         f"temperature=[bold]{stats['temperature']:.3f}[/]  "
@@ -207,12 +211,15 @@ def benchmark(
     out: Path = typer.Option(None, help="Write markdown table here."),
     scores_csv: Path = typer.Option(None, help="Write raw per-image scores here."),
     device: str = typer.Option("auto", help=_DEVICE_HELP),
+    equalize_jpeg: int = typer.Option(
+        None, help="JPEG-encode non-JPEG images once at this quality before scoring."
+    ),
 ):
     """Per-generator AUROC/AP/acc/TPR@5%FPR/ECE table (cross-generator generalization)."""
     from .evaluation.benchmark import run_benchmark
 
     det = _build_detector("fast", checkpoint, pretrained, device=device)
-    console.print(run_benchmark(det, manifest, out, scores_csv))
+    console.print(run_benchmark(det, manifest, out, scores_csv, equalize_jpeg))
 
 
 @app.command()
@@ -225,12 +232,49 @@ def robustness(
         None, help="Write raw per-image, per-perturbation scores here."
     ),
     device: str = typer.Option("auto", help=_DEVICE_HELP),
+    equalize_jpeg: int = typer.Option(
+        None, help="JPEG-encode non-JPEG images once at this quality before scoring."
+    ),
 ):
     """Re-evaluate under JPEG/resize/blur — the 'will it survive WhatsApp' table."""
     from .evaluation.benchmark import run_robustness
 
     det = _build_detector("fast", checkpoint, pretrained, device=device)
-    console.print(run_robustness(det, manifest, out, scores_csv))
+    console.print(run_robustness(det, manifest, out, scores_csv, equalize_jpeg))
+
+
+@app.command("calibrate-fpr")
+def calibrate_fpr(
+    manifest: Path = typer.Argument(
+        ..., help="CSV of REAL photos: path,label(0),generator (= transport state, e.g. whatsapp)."
+    ),
+    checkpoint: Path = typer.Option(None, help="Trained checkpoint."),
+    pretrained: str = typer.Option(None, help="Model-zoo name, e.g. fast-v0."),
+    alpha: float = typer.Option(0.01, help="Target rate of real photos flagged as AI."),
+    out: Path = typer.Option(None, help="Write thresholds here (default: <manifest>.fpr.json)."),
+    device: str = typer.Option("auto", help=_DEVICE_HELP),
+    equalize_jpeg: int = typer.Option(
+        None, help="JPEG-encode non-JPEG images once at this quality before scoring."
+    ),
+):
+    """Set thresholds from real photos only, so at most ALPHA of real photos are flagged."""
+    from .evaluation.guarantee import calibrate_real_manifest, save_calibration
+
+    if not 0.0 < alpha < 1.0:
+        raise typer.BadParameter("alpha must be between 0 and 1")
+    det = _build_detector("fast", checkpoint, pretrained, device=device)
+    try:
+        cal, n = calibrate_real_manifest(det, manifest, alpha, equalize_jpeg)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    out = out or manifest.with_suffix(".fpr.json")
+    save_calibration(cal, out, n)
+    for name, value in sorted(cal.thresholds.items()):
+        console.print(f"{name}: flag when P(AI) > [bold]{value:.4f}[/]")
+    console.print(f"pooled (unknown or small strata): [bold]{cal.pooled:.4f}[/]")
+    if cal.fallback:
+        console.print(f"[yellow]too few photos for their own threshold:[/] {sorted(cal.fallback)}")
+    console.print(f"calibrated on {n} real photos at alpha={alpha:g} -> [bold]{out}[/]")
 
 
 @app.command("export-onnx")

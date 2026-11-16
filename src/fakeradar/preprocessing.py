@@ -14,6 +14,7 @@ The semantic branch does its own resized preprocessing separately.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import torch
@@ -27,6 +28,34 @@ def load_image(source) -> Image.Image:
         return source.convert("RGB")
     with Image.open(Path(source)) as img:  # closes the file handle after decode
         return img.convert("RGB")
+
+
+_JPEG_FORMATS = ("JPEG", "MPO")
+
+
+def load_image_equalized(source, jpeg_quality: int | None) -> Image.Image:
+    """`load_image`, plus one JPEG pass for images that never had one.
+
+    Some training sets store real photos as JPEG and generated images as
+    lossless PNG (GenImage does), so "has JPEG traces" becomes a shortcut for
+    "real". With `jpeg_quality` set, an image whose file is not already a JPEG
+    (judged by the file's header, not its name) is JPEG-encoded once at that
+    quality, giving both classes the same compression history. JPEG sources
+    are returned untouched; `None` is exactly `load_image`.
+    """
+    if jpeg_quality is None:
+        return load_image(source)
+    if isinstance(source, Image.Image):
+        fmt, img = source.format, source.convert("RGB")
+    else:
+        with Image.open(Path(source)) as opened:
+            fmt, img = opened.format, opened.convert("RGB")
+    if fmt in _JPEG_FORMATS:
+        return img
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=int(jpeg_quality))
+    buf.seek(0)
+    return Image.open(buf).convert("RGB")
 
 
 def semantic_view(img: Image.Image, size: int) -> torch.Tensor:

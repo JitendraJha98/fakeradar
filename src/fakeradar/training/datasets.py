@@ -24,7 +24,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import functional as TF
 
-from ..preprocessing import extract_crops, load_image
+from ..preprocessing import extract_crops, load_image_equalized
 from .augment import RobustnessAugment
 
 _MAX_LOAD_ATTEMPTS = 10
@@ -79,6 +79,7 @@ class ManifestDataset(Dataset):
         augment: bool = False,
         semantic_preprocess: Callable | None = None,
         max_crops: int | None = None,
+        equalize_jpeg_quality: int | None = None,
     ):
         if augment and max_crops is not None:
             raise ValueError("max_crops (multi-crop eval) is incompatible with augment=True")
@@ -87,6 +88,8 @@ class ManifestDataset(Dataset):
         self.aug = RobustnessAugment() if augment else None
         self.semantic_preprocess = semantic_preprocess
         self.max_crops = max_crops
+        # one JPEG pass for lossless sources: both classes share a compression history
+        self.equalize_jpeg_quality = equalize_jpeg_quality
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -104,13 +107,13 @@ class ManifestDataset(Dataset):
         if self.aug is None:
             row = self.rows[idx]
             try:
-                return row, load_image(row["path"])
+                return row, load_image_equalized(row["path"], self.equalize_jpeg_quality)
             except (OSError, Image.DecompressionBombError) as e:
                 raise OSError(f"Cannot read image {row['path']}: {e}") from e
         for _ in range(_MAX_LOAD_ATTEMPTS):
             row = self.rows[idx]
             try:
-                return row, load_image(row["path"])
+                return row, load_image_equalized(row["path"], self.equalize_jpeg_quality)
             except (OSError, Image.DecompressionBombError) as e:
                 warnings.warn(
                     f"skipping unreadable training image {row['path']}: {e}", stacklevel=2

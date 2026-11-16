@@ -100,12 +100,22 @@ def train(config_path: str | Path, resume: str | Path | None = None) -> Path:
     model = FakeRadarModel(det_cfg).to(device)
     semantic_pre = model.semantic_preprocessor()
     num_workers = data.get("num_workers", 4)
+    # None = off. See preprocessing.load_image_equalized for the shortcut this closes.
+    equalize = data.get("equalize_jpeg_quality")
 
     ds_train = ManifestDataset(
-        data["train_manifest"], det_cfg.crop_size, augment=True, semantic_preprocess=semantic_pre
+        data["train_manifest"],
+        det_cfg.crop_size,
+        augment=True,
+        semantic_preprocess=semantic_pre,
+        equalize_jpeg_quality=equalize,
     )
     ds_val = ManifestDataset(
-        data["val_manifest"], det_cfg.crop_size, augment=False, semantic_preprocess=semantic_pre
+        data["val_manifest"],
+        det_cfg.crop_size,
+        augment=False,
+        semantic_preprocess=semantic_pre,
+        equalize_jpeg_quality=equalize,
     )
     require_both_classes(ds_train.rows, f"train manifest {data['train_manifest']}")
     require_both_classes(ds_val.rows, f"val manifest {data['val_manifest']}")
@@ -145,6 +155,11 @@ def train(config_path: str | Path, resume: str | Path | None = None) -> Path:
         ckpt = read_checkpoint(resume, map_location=device)
         if ckpt["config"] != det_cfg.to_dict():
             raise ValueError(f"{resume} was trained with a different detector config.")
+        if ckpt.get("equalize_jpeg_quality") != equalize:
+            raise ValueError(
+                f"{resume} was trained with equalize_jpeg_quality="
+                f"{ckpt.get('equalize_jpeg_quality')}, but the config says {equalize}."
+            )
         if "optimizer" not in ckpt:
             raise ValueError(f"{resume} has no optimizer state — resume from a run's last.pt.")
         model.load_state_dict(ckpt["state_dict"])
@@ -227,7 +242,11 @@ def train(config_path: str | Path, resume: str | Path | None = None) -> Path:
             )
         if not math.isnan(metrics["auroc"]) and metrics["auroc"] > best_auroc:
             best_auroc = metrics["auroc"]
-            save_checkpoint(model, best_path, extra={"epoch": epoch, "val": metrics})
+            save_checkpoint(
+                model,
+                best_path,
+                extra={"epoch": epoch, "val": metrics, "equalize_jpeg_quality": equalize},
+            )
             print(f"  ↳ new best AUROC {best_auroc:.4f} -> {best_path}")
         save_checkpoint(
             model,
@@ -237,6 +256,7 @@ def train(config_path: str | Path, resume: str | Path | None = None) -> Path:
                 "step": step,
                 "val": metrics,
                 "best_auroc": best_auroc,
+                "equalize_jpeg_quality": equalize,
                 "optimizer": opt.state_dict(),
                 "scheduler": sched.state_dict(),
                 "scaler": scaler.state_dict(),
@@ -250,7 +270,11 @@ def train(config_path: str | Path, resume: str | Path | None = None) -> Path:
         from ..evaluation.calibrate import calibrate_checkpoint
 
         stats = calibrate_checkpoint(
-            best_path, data["val_manifest"], num_workers=num_workers, device=device
+            best_path,
+            data["val_manifest"],
+            num_workers=num_workers,
+            device=device,
+            equalize_jpeg_quality=equalize,
         )
         print(
             f"[calibration] T={stats['temperature']:.3f} "

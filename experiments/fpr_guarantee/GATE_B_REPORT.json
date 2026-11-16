@@ -1,0 +1,83 @@
+{
+ "checks": {
+  "facebook@0.05": {
+   "rate": 0.05931122448979592,
+   "low": 0.036906723907565844,
+   "high": 0.08556969385381856,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "instagram@0.05": {
+   "rate": 0.0548469387755102,
+   "low": 0.02991725015913431,
+   "high": 0.08030720773012837,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "orig@0.05": {
+   "rate": 0.0548469387755102,
+   "low": 0.026147542549524592,
+   "high": 0.10007646357923786,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "twitter@0.05": {
+   "rate": 0.047223994894703254,
+   "low": 0.03053386585655843,
+   "high": 0.08105047233787661,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "whatsapp@0.05": {
+   "rate": 0.05548469387755102,
+   "low": 0.03242989139442153,
+   "high": 0.07982247560990537,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "facebook@0.01": {
+   "rate": 0.012755102040816327,
+   "low": 0.005092216915045764,
+   "high": 0.022321784688668064,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "instagram@0.01": {
+   "rate": 0.008928571428571428,
+   "low": 0.005089058524173028,
+   "high": 0.01598491040411825,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "orig@0.01": {
+   "rate": 0.008928571428571428,
+   "low": 0.0031806615776081423,
+   "high": 0.02484116013688787,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "twitter@0.01": {
+   "rate": 0.01021059349074665,
+   "low": 0.00446706342875376,
+   "high": 0.017241379310344827,
+   "passed": true,
+   "over_hard_limit": false
+  },
+  "whatsapp@0.01": {
+   "rate": 0.007653061224489796,
+   "low": 0.0044585987261146496,
+   "high": 0.019108584720682976,
+   "passed": true,
+   "over_hard_limit": false
+  }
+ },
+ "held_out": {
+  "platform": "telegram",
+  "rates": {
+   "0.05": 0.03571428571428571,
+   "0.01": 0.008928571428571428
+  }
+ },
+ "n_failed": 0,
+ "passed": true
+}

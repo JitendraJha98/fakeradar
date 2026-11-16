@@ -157,3 +157,28 @@ def test_single_class_val_manifest_fails_fast(tmp_path):
     _write_manifest(val_csv, [r for r in rows if r[1] == 1])
     with pytest.raises(ValueError, match="both real"):
         train(_train_yaml(tmp_path, train_csv, val_csv, epochs=1))
+
+
+def _equalized_yaml(tmp_path, csv_path, quality, epochs=1):
+    path = _train_yaml(tmp_path, csv_path, csv_path, epochs=epochs)
+    cfg = yaml.safe_load(path.read_text())
+    cfg["data"]["equalize_jpeg_quality"] = quality
+    out = tmp_path / f"train_eq_{quality}_{epochs}.yaml"
+    out.write_text(yaml.safe_dump(cfg))
+    return out
+
+
+def test_equalize_setting_is_stored_and_a_changed_value_cannot_resume(tmp_path):
+    rows = _make_dataset(tmp_path, n_per_class=2)
+    csv_path = tmp_path / "m.csv"
+    _write_manifest(csv_path, rows)
+
+    best = train(_equalized_yaml(tmp_path, csv_path, 96))
+    assert torch.load(best, map_location="cpu", weights_only=True)["equalize_jpeg_quality"] == 96
+    last = tmp_path / "run" / "last.pt"
+    assert torch.load(last, map_location="cpu", weights_only=True)["equalize_jpeg_quality"] == 96
+
+    with pytest.raises(ValueError, match="equalize_jpeg_quality"):
+        train(_equalized_yaml(tmp_path, csv_path, 90, epochs=2), resume=last)
+    with pytest.raises(ValueError, match="equalize_jpeg_quality"):
+        train(_train_yaml(tmp_path, csv_path, csv_path, epochs=2), resume=last)

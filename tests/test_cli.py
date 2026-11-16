@@ -81,3 +81,19 @@ def test_non_checkpoint_file_is_a_clean_error(tmp_path):
     result = runner.invoke(app, ["scan", str(img), "--checkpoint", str(bogus)])
     assert result.exit_code != 0
     assert "not a fakeradar checkpoint" in result.output
+
+
+def test_equalize_jpeg_option_is_offered_where_images_are_scored():
+    for command in ("benchmark", "robustness", "calibrate"):
+        result = runner.invoke(app, [command, "--help"], env={"COLUMNS": "200"})
+        assert result.exit_code == 0
+        assert "--equalize-jpeg" in result.output
+
+
+def test_calibrate_fpr_command_exists_and_refuses_to_run_without_weights(tmp_path):
+    result = runner.invoke(app, ["calibrate-fpr", "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0 and "--alpha" in result.output
+    manifest = tmp_path / "real.csv"
+    manifest.write_text("path,label\nx.jpg,0\n")
+    result = runner.invoke(app, ["calibrate-fpr", str(manifest)])
+    assert result.exit_code != 0
