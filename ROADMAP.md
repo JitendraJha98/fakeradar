@@ -8,15 +8,18 @@ Effort estimates assume one engineer, part-time, one A100.
 - [x] CLI, REST API, ONNX export, CI, tests
 - [x] GenImage manifest builder with leak-free train / val / test protocol
 - [x] Resumable training, raw-score CSVs for every published table
-- [ ] Train `fast` tier on GenImage SD1.4-only protocol (A100, ~2–4h)
-- [ ] Publish weights to HF Hub + cross-generator & robustness tables
-- [ ] PyPI release
+- [x] Train `fast` tier on GenImage SD1.4-only protocol (done on Kaggle T4s: 95k images, 5 epochs, 3 seeds)
+- [x] Publish weights to HF Hub + cross-generator & robustness tables (`JitendraJha98/fakeradar-fast`, `experiments/phase4/RESULTS.md`)
+- [ ] PyPI release (until then: install from the repository)
 
 ## v0.2 — Accuracy tier + demo (2–3 weekends)
-- [ ] Train `accurate` tier (frozen CLIP ViT-B fusion) — `configs/train_accurate.yaml` ready
+- [x] Guaranteed false-accusation rate: `calibrate-fpr` + `scan --fpr-thresholds` (audited, Gate B passed)
+- [x] Compression equalization for GenImage's JPEG/PNG shortcut
+- [x] Train `accurate` tier (frozen CLIP ViT-B fusion): 3 seeds, published as `JitendraJha98/fakeradar-accurate`
 - [x] Temperature calibration on held-out val; report ECE
 - [ ] Hugging Face Space demo (Gradio, `demo/app.py`)
 - [ ] ONNX int8 quantization + CPU latency table
+- [ ] ONNX export for the accurate tier (today only crop-only fast-tier models export)
 
 ## v0.3 — In-the-wild robustness (4+ weekends)
 - [ ] Add 2025–26 generators to eval: Flux, MJ v7, SD3.5, Imagen, GPT-4o images
@@ -31,3 +34,9 @@ Effort estimates assume one engineer, part-time, one A100.
 ## v1.0 — Paper + stable API
 - [ ] GRAFT paper (see paper/) with full experiments and ablations
 - [ ] Semver-stable Python API, versioned model zoo
+
+## Research follow-ups (decided 2026-11-23)
+- [ ] Same-data baselines (CNNDetection, NPR, UnivFD retrained on SD v1.4 only) — skipped for now; stated as a limitation in the paper
+- [ ] Audit the guarantee on newer phones and on generated images shared through real platforms — no suitable public dataset yet
+- [ ] Train on many generators to close the accuracy gap with broadly trained detectors — scaling, not research novelty
+- [x] Lens-law (thin-lens blur) evidence tested and stopped by its gate (`experiments/lens_law/GATE_M_REPORT.md`)

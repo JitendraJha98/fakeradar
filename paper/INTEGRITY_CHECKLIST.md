@@ -65,7 +65,7 @@ credibility. Work through every item below, in order.
       ledgers; re-check each against its source before submission.
 - [ ] Ten references were added on 2026-11-22 from web searches (marked in
       references.bib). Verify every field.
-- [ ] Baselines under the identical protocol: still [TO FILL].
+- [x] Same-data baselines: decided against (2026-11-23); stated as a limitation in the paper instead.
 - [x] The final 3-seed mean in the abstract is filled (0.937, from Table 1).
 
 - [ ] The paper has not been compiled: no LaTeX toolchain on the authoring

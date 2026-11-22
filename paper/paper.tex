@@ -235,10 +235,13 @@ is not a same-data comparison; it shows that broad training data, not
 architecture, dominates cross-generator accuracy at this scale, and that our
 small detector is not competitive on accuracy. Its contribution here is as an
 openly measured, CPU-class baseline and as the testbed for the guarantee.
-\tofill{baselines retrained on SD v1.4 only (CNNDetection, NPR, UnivFD) for a
-same-data comparison}.
 
 \section{Limitations and Ethics}
+We did not retrain other detectors (CNNDetection, NPR, UnivFD) on the same
+Stable Diffusion v1.4 data, so our accuracy comparison is against a
+re-evaluated public model trained on far more generators, not a same-data
+comparison; it bounds how far behind a small single-generator detector is,
+but does not rank architectures.
 All results use public 2020--2023 data and generators; none covers 2025--2026
 commercial systems. The guarantee assumes the real photographs being judged
 resemble the calibration photographs of their stratum; it must be

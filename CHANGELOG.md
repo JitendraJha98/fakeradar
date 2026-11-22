@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-11 research cycle)
+- Published weights: `fast-v0` (`JitendraJha98/fakeradar-fast`) and
+  `accurate-v0` (`JitendraJha98/fakeradar-accurate`) on the Hugging Face Hub,
+  trained on GenImage SD v1.4 only (95k images, 5 epochs); weights
+  CC-BY-NC-SA-4.0. `MODEL_ZOO` points at them. Measured results over three
+  seeds in `experiments/phase4/RESULTS.md`.
+- Guaranteed false-accusation rate: `fakeradar calibrate-fpr REAL.csv --alpha`
+  (split-conformal thresholds from real photos only, per stratum) and
+  `fakeradar scan --fpr-thresholds FILE [--stratum NAME]`
+  (`evaluation/guarantee.py`). Audited on FODB: `experiments/fpr_guarantee/GATE_B_REPORT.md`.
+- Compression equalization: `preprocessing.load_image_equalized`, training
+  config key `data.equalize_jpeg_quality` (stored in checkpoints; `--resume`
+  rejects a changed value), `--equalize-jpeg` on `benchmark`, `robustness`,
+  `calibrate`.
+- `GradientFieldBranch(use_coherence=False)` for the coherence ablation.
+- `experiments/`: the lens-law test (stopped by its gate, `GATE_M_REPORT.md`),
+  the guarantee audit, Kaggle training jobs, results and model-card scripts.
+- Paper restructured around the measured results; `paper/make_tables.py`
+  generates every result table.
+
+### Fixed (2026-11 research cycle)
+- `get_preset()` returned configs that shared mutable dicts with the built-in
+  preset, so editing one config changed the preset for the whole process; it
+  now deep-copies.
+- CLI help-text tests now ignore colour codes (they failed on GitHub Actions).
+
+### Changed (2026-11 research cycle)
+- Docs and paper no longer describe the fusion gate as a per-image
+  explanation: it is one global set of weights.
+
 ### Added
 - `fakeradar prepare-genimage` (logic now in `fakeradar.training.genimage`, so
   pip installs have it; `scripts/prepare_genimage.py` is a thin wrapper):

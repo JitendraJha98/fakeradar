@@ -24,11 +24,13 @@ And one product decision on top: **everything runs locally.** The `fast` tier is
 
 ## Quickstart
 
-```bash
-pip install fakeradar            # core (fast tier)
-pip install 'fakeradar[all]'     # + CLIP branch, REST API, ONNX, demo
+Not on PyPI yet (planned); install from the repository:
 
-fakeradar scan photo.jpg holiday_album/
+```bash
+pip install "fakeradar[hub] @ git+https://github.com/JitendraJha98/fakeradar"     # fast tier + model download
+pip install "fakeradar[all] @ git+https://github.com/JitendraJha98/fakeradar"     # + CLIP branch, REST API, ONNX, demo, Hub
+
+fakeradar scan photo.jpg holiday_album/ --pretrained fast-v0
 ```
 
 ```text

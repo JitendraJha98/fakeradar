@@ -29,8 +29,19 @@ coherence ratio drifts by O(1), which under CUDA AMP would make the trained
 features differ from fp32 inference. Only the ResNet encoder runs in AMP.
 
 **Fusion.** Per-branch projections → learned softmax gate → MLP → logit, with
-auxiliary per-branch logits (deep supervision + interpretability) and a
-temperature buffer fitted post-hoc on validation data.
+auxiliary per-branch logits (deep supervision; also reported per image) and a
+temperature buffer fitted post-hoc on validation data. The gate is one global
+set of weights learned in training, the same for every image: it says how much
+the model trusts each branch overall, not which branch fired on a given image.
+
+**Compression equalization.** Some training sets store real photos as JPEG and
+generated images as PNG (GenImage does), so "has JPEG traces" becomes a
+shortcut for "real". `preprocessing.load_image_equalized` gives every image
+that is not already a JPEG (judged from the file header) one JPEG pass at a
+chosen quality. Training config key `data.equalize_jpeg_quality` (stored in the
+checkpoint; `--resume` refuses a changed value) and `--equalize-jpeg` on
+`benchmark`, `robustness` and `calibrate`. Off by default. On GenImage it
+raised the fast tier's mean AUROC from 0.902 to 0.937.
 
 **Inference.** Up to `max_crops` native crops from a 3×3 grid (center first,
 then corners, then edge midpoints — up to 9); logits are averaged; small
@@ -43,6 +54,31 @@ Logits are collected with the inference protocol (mean over the same crop
 grid), since averaging K crops shrinks the logit spread. The fit is a bounded
 grid search over T ∈ [0.05, 20] (the NLL is convex in 1/T), with a warning if
 the optimum hits a bound (tiny or perfectly separable hold-out).
+
+## Guaranteed false-accusation rate
+`fakeradar calibrate-fpr REAL.csv --checkpoint best.pt --alpha 0.01` scores a
+manifest of **real** photos only (`label` 0; the `generator` column names the
+stratum, for example the sharing platform) and sets split-conformal thresholds
+(`evaluation/guarantee.py`): the ⌈(n+1)(1−α)⌉-th smallest score per stratum, a
+pooled threshold for strata too small for level α. If new real photos are
+exchangeable with the calibration photos of their stratum, at most α of them
+are flagged, whatever generator made the fakes. `fakeradar scan
+--fpr-thresholds FILE [--stratum NAME]` then adds `flagged`, `alpha` and
+`stratum` to each result. Audited on 23,105 FODB phone photos through five
+platforms: `experiments/fpr_guarantee/GATE_B_REPORT.md`. Per-stratum
+thresholds matter: one pooled threshold flagged 10% of camera originals at a
+5% target.
+
+## Published models
+| zoo name | repo | contents |
+|---|---|---|
+| `fast-v0` | `JitendraJha98/fakeradar-fast` | gradient + frequency, 47 MB |
+| `accurate-v0` | `JitendraJha98/fakeradar-accurate` | + frozen CLIP ViT-B, 393 MB |
+
+Both trained on GenImage Stable Diffusion v1.4 only (95k images, 5 epochs,
+compression equalized); weights CC-BY-NC-SA-4.0, inherited from the data.
+Measured results, generated from the run files:
+[experiments/phase4/RESULTS.md](../experiments/phase4/RESULTS.md).
 
 ## Extension points
 - `register_branch` — new forensic views (reconstruction-error branch is a
