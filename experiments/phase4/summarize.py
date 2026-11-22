@@ -16,7 +16,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2] / "runs" / "lens_law"
 MAIN = {"42": "phase4-train-fast", "43": "phase4-seed43", "44": "phase4-seed44"}
 ABLATION = {"42": "phase4-nocoh42", "43": "phase4-nocoh43"}
-ACCURATE = {"42": "phase4-accurate42", "43": "phase4-accurate43", "44": "phase4-accurate44"}  # accurate tier: adds the frozen CLIP ViT-B branch
+ACCURATE = {
+    "42": "phase4-accurate42",
+    "43": "phase4-accurate43",
+    "44": "phase4-accurate44",
+}  # accurate tier: adds the frozen CLIP ViT-B branch
 # Reference detector re-evaluated (not retrained) on the same test images: public
 # Community Forensics weights, trained on thousands of generators.
 BASELINE = {"commfor": "phase4-baseline-commfor"}
@@ -213,7 +217,7 @@ def docs_tables(root: Path = ROOT) -> tuple[str, str]:
         board.append(
             f"| accurate-v0 ({len(acc)} seed) | GenImage SD1.4, 95k images, 5 epochs | "
             f"{fmt([d['MEAN']['auroc'] for d in a_eq])} | {fmt([r['jpeg50'] for r in a_rob])} | "
-            "not published |"
+            "[HF](https://huggingface.co/JitendraJha98/fakeradar-accurate) (CC-BY-NC-SA-4.0) |"
         )
     base = available(BASELINE, root)
     if base:

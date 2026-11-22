@@ -52,7 +52,7 @@ print(r.prob_ai, r.verdict, r.per_branch)
 Local REST API: `fakeradar serve --checkpoint best.pt` → `POST /v1/detect`
 (multipart `file`; uploads over 25 MB → 413, undecodable → 400).
 
-> **Weights:** `fast-v0` is on the Hugging Face Hub ([JitendraJha98/fakeradar-fast](https://huggingface.co/JitendraJha98/fakeradar-fast), CC-BY-NC-SA-4.0 because the training data is): `fakeradar scan photo.jpg --pretrained fast-v0`. It was trained on one generator (Stable Diffusion v1.4); read the model card's limits before relying on it, and set your own threshold on real photos with `fakeradar calibrate-fpr` rather than trusting the fixed 0.5 cut.
+> **Weights:** `fast-v0` is on the Hugging Face Hub ([JitendraJha98/fakeradar-fast](https://huggingface.co/JitendraJha98/fakeradar-fast), CC-BY-NC-SA-4.0 because the training data is): `fakeradar scan photo.jpg --pretrained fast-v0`. The accurate tier ([JitendraJha98/fakeradar-accurate](https://huggingface.co/JitendraJha98/fakeradar-accurate), about 390 MB, needs `fakeradar[semantic]`) is markedly more robust to compression and resizing: `--tier accurate --pretrained accurate-v0`. It was trained on one generator (Stable Diffusion v1.4); read the model card's limits before relying on it, and set your own threshold on real photos with `fakeradar calibrate-fpr` rather than trusting the fixed 0.5 cut.
 
 ## Architecture
 

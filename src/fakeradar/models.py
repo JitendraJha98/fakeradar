@@ -121,8 +121,8 @@ def model_from_checkpoint(ckpt: dict[str, Any]) -> FakeRadarModel:
 MODEL_ZOO: dict[str, dict[str, str]] = {
     # fast-v0: GenImage SD v1.4 only, weights CC-BY-NC-SA-4.0 (see the model card).
     "fast-v0": {"repo_id": "JitendraJha98/fakeradar-fast", "filename": "fast_v0.pt"},
-    # Not trained yet.
-    "accurate-v0": {"repo_id": "jitendra-jha/fakeradar-accurate", "filename": "accurate_v0.pt"},
+    # accurate-v0: adds a frozen CLIP ViT-B branch; same data and licence as fast-v0.
+    "accurate-v0": {"repo_id": "JitendraJha98/fakeradar-accurate", "filename": "accurate_v0.pt"},
 }
 
 

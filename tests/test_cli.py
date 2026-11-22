@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -11,6 +12,16 @@ from fakeradar import __version__  # noqa: E402
 from fakeradar.cli import app  # noqa: E402
 
 runner = CliRunner()
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain_help(command: str) -> str:
+    """Help text without colour codes: CI terminals style option names in pieces."""
+    result = runner.invoke(app, [command, "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0, result.output
+    return _ANSI.sub("", result.output)
 
 
 def test_version():
@@ -85,14 +96,11 @@ def test_non_checkpoint_file_is_a_clean_error(tmp_path):
 
 def test_equalize_jpeg_option_is_offered_where_images_are_scored():
     for command in ("benchmark", "robustness", "calibrate"):
-        result = runner.invoke(app, [command, "--help"], env={"COLUMNS": "200"})
-        assert result.exit_code == 0
-        assert "--equalize-jpeg" in result.output
+        assert "--equalize-jpeg" in plain_help(command)
 
 
 def test_calibrate_fpr_command_exists_and_refuses_to_run_without_weights(tmp_path):
-    result = runner.invoke(app, ["calibrate-fpr", "--help"], env={"COLUMNS": "200"})
-    assert result.exit_code == 0 and "--alpha" in result.output
+    assert "--alpha" in plain_help("calibrate-fpr")
     manifest = tmp_path / "real.csv"
     manifest.write_text("path,label\nx.jpg,0\n")
     result = runner.invoke(app, ["calibrate-fpr", str(manifest)])

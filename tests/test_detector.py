@@ -68,3 +68,12 @@ def test_fast_v0_zoo_entry_points_at_the_published_repo():
         "repo_id": "JitendraJha98/fakeradar-fast",
         "filename": "fast_v0.pt",
     }
+
+
+def test_accurate_v0_zoo_entry_points_at_the_published_repo():
+    from fakeradar.models import MODEL_ZOO
+
+    assert MODEL_ZOO["accurate-v0"] == {
+        "repo_id": "JitendraJha98/fakeradar-accurate",
+        "filename": "accurate_v0.pt",
+    }
