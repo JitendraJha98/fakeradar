@@ -17,7 +17,7 @@ Effort estimates assume one engineer, part-time, one A100.
 - [x] Compression equalization for GenImage's JPEG/PNG shortcut
 - [x] Train `accurate` tier (frozen CLIP ViT-B fusion): 3 seeds, published as `JitendraJha98/fakeradar-accurate`
 - [x] Temperature calibration on held-out val; report ECE
-- [ ] Hugging Face Space demo (Gradio, `demo/app.py`)
+- [x] Hugging Face Space demo: static page running fast-v0 in the browser (`demo/space-static/`, huggingface.co/spaces/JitendraJha98/fakeradar); a Gradio version (`demo/space/`) needs HF PRO to host
 - [ ] ONNX int8 quantization + CPU latency table
 - [ ] ONNX export for the accurate tier (today only crop-only fast-tier models export)
 

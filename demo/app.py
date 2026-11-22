@@ -15,7 +15,11 @@ import gradio as gr
 
 from fakeradar import Detector
 
-VERDICT_TEXT = {"likely_ai": "Likely AI-generated", "likely_real": "Likely real", "uncertain": "Uncertain"}
+VERDICT_TEXT = {
+    "likely_ai": "Likely AI-generated",
+    "likely_real": "Likely real",
+    "uncertain": "Uncertain",
+}
 
 
 def main() -> None:

@@ -1,0 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+huggingface_hub
+fakeradar[semantic] @ git+https://github.com/JitendraJha98/fakeradar

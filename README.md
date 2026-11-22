@@ -24,6 +24,8 @@ And one product decision on top: **everything runs locally.** The `fast` tier is
 
 ## Quickstart
 
+**Try it in your browser:** [huggingface.co/spaces/JitendraJha98/fakeradar](https://huggingface.co/spaces/JitendraJha98/fakeradar). The fast model runs on your own device; the image is never uploaded.
+
 Not on PyPI yet (planned); install from the repository:
 
 ```bash
