@@ -185,6 +185,10 @@ def export_onnx(
         dynamic_shapes={"crop": {0: "batch"}},
         opset_version=opset,
         dynamo=True,
+        # The default graph optimizer treats `+ 1e-12` as adding zero and drops it,
+        # which turns the gradient branch's coherence map in flat regions from 1 (as
+        # trained) into 0: real photos with sky or walls then score differently.
+        optimize=False,
     )
     return path
 
@@ -206,7 +210,12 @@ def verify_onnx_parity(
         ) from e
     import numpy as np
 
-    x = torch.rand(batch, 3, crop_size, crop_size)
+    # Random noise has no flat regions, where the export once diverged, so the
+    # check also runs on crops that are mostly flat with a few hard edges.
+    flat = torch.full((batch, 3, crop_size, crop_size), 0.5)
+    flat[0, :, :, crop_size // 2 :] = 0.8
+    flat[-1, :, crop_size // 3 : crop_size // 2, :] = 0.2
+    x = torch.cat([torch.rand(batch, 3, crop_size, crop_size), flat])
     model.eval()
     with torch.no_grad():
         out = model(x)
