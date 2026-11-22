@@ -21,6 +21,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "experiments" / "phase4"))
 from summarize import (  # noqa: E402
     ABLATION,
+    ACCURATE,
+    BASELINE,
     CONDITIONS,
     GENERATORS,
     MAIN,
@@ -173,33 +175,46 @@ def benchmark_tables() -> str:
     ab = {s: benchmark(p / "benchmark_equalized.md") for s, p in abl.items()}
     rob = {s: robustness(p / "robustness_equalized.md") for s, p in main.items()}
     rob_ab = {s: robustness(p / "robustness_equalized.md") for s, p in abl.items()}
+    acc = available(ACCURATE, ROOT)
+    acc_eq = {s: benchmark(p / "benchmark_equalized.md") for s, p in acc.items()}
+    acc_rob = {s: robustness(p / "robustness_equalized.md") for s, p in acc.items()}
+    base = available(BASELINE, ROOT)
+    b_eq = {s: benchmark(p / "benchmark_equalized.md") for s, p in base.items()}
+    b_rob = {s: robustness(p / "robustness_equalized.md") for s, p in base.items()}
     n = len(main)
     lines = [
         "\\begin{table}[t]\\centering\\small",
-        f"\\caption{{Cross-generator AUROC, trained on SD v1.4 only (mean$\\pm$std over {n} seeds). "
-        "``Equalized'': non-JPEG images JPEG-encoded once at quality 96, closing the JPEG/PNG shortcut.}",
+        f"\\caption{{Cross-generator AUROC, trained on SD v1.4 only (fast tier: mean$\\pm$std over {n} seeds; "
+        f"accurate tier, which adds a frozen CLIP ViT-B branch: {len(acc)} seed(s)). "
+        "``Equalized'': non-JPEG images JPEG-encoded once at quality 96, closing the JPEG/PNG shortcut. "
+        "CommFor: public Community Forensics weights re-evaluated on the same images, not retrained; "
+        "trained on thousands of generators, so not a same-data comparison.}",
         "\\label{tab:main}",
-        "\\begin{tabular}{l c c c}\\hline",
-        "Test generator & equalized & as stored & w/o coherence\\\\\\hline",
+        "\\resizebox{\\columnwidth}{!}{\\begin{tabular}{l c c c c c}\\hline",
+        "Test generator & equalized & as stored & w/o coherence & accurate & CommFor\\\\\\hline",
     ]
     for g in (*GENERATORS, "MEAN"):
         name = "\\textbf{Mean of 8}" if g == "MEAN" else PRETTY[g]
         no = ms([d[g]["auroc"] for d in ab.values()]) if ab else "--"
+        ac = ms([d[g]["auroc"] for d in acc_eq.values()]) if acc else "--"
+        cf = ms([d[g]["auroc"] for d in b_eq.values()]) if base else "--"
         lines.append(
-            f"{name} & {ms([d[g]['auroc'] for d in eq.values()])} & {ms([d[g]['auroc'] for d in raw.values()])} & {no}\\\\"
+            f"{name} & {ms([d[g]['auroc'] for d in eq.values()])} & {ms([d[g]['auroc'] for d in raw.values()])} & {no} & {ac} & {cf}\\\\"
         )
-    lines += ["\\hline\\end{tabular}", "\\end{table}", ""]
+    lines += ["\\hline\\end{tabular}}", "\\end{table}", ""]
     lines += [
         "\\begin{table}[t]\\centering\\small",
-        f"\\caption{{Transport robustness: AUROC on 500 real + 500 generated test images (equalized; {n} seeds).}}",
+        f"\\caption{{Transport robustness: AUROC on 500 real + 500 generated test images (equalized; fast tier {n} seeds).}}",
         "\\label{tab:robust}",
-        "\\begin{tabular}{l c c}\\hline",
-        "Condition & full model & w/o coherence\\\\\\hline",
+        "\\resizebox{\\columnwidth}{!}{\\begin{tabular}{l c c c c}\\hline",
+        "Condition & fast & fast w/o coherence & accurate & CommFor\\\\\\hline",
     ]
     for c in CONDITIONS:
         no = ms([r[c] for r in rob_ab.values()]) if rob_ab else "--"
-        lines.append(f"{COND[c]} & {ms([r[c] for r in rob.values()])} & {no}\\\\")
-    lines += ["\\hline\\end{tabular}", "\\end{table}"]
+        ac = ms([r[c] for r in acc_rob.values()]) if acc else "--"
+        cf = ms([r[c] for r in b_rob.values()]) if base else "--"
+        lines.append(f"{COND[c]} & {ms([r[c] for r in rob.values()])} & {no} & {ac} & {cf}\\\\")
+    lines += ["\\hline\\end{tabular}}", "\\end{table}"]
     return "\n".join(lines)
 
 

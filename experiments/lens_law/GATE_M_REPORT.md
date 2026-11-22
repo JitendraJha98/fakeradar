@@ -92,3 +92,27 @@ python -m lenslaw.report <records.jsonl>        # development split only
 
 Every decision made along the way is in the progress ledger,
 `.superpowers/sdd/2026-11-14-lens-law-phase0-1/progress.md`.
+
+## Addendum (2026-11-22): check M1 and M2 on DPDD
+
+The owner downloaded DPDD (Abuolaim and Brown, ECCV 2020): 500 Canon scenes,
+each shot at wide aperture and again stopped down, so blur varies strongly
+with depth. Development-split scenes only (310), scored with both estimators
+by `dpdd_m1.py`; the sharp twin carries the next-lower frame number, so pairs
+are matched by order (grayscale correlation of matched pairs 0.986 to 0.999).
+Summary: `runs/lens_law/dpdd_m1_summary.json`.
+
+| Check | Needed | Edge ratio (v0) | Learned (v1) |
+|---|---|---|---|
+| M1, depth from the sharp twin | at least 80% | 59.0% (of 295) | 61.6% (of 245) |
+| M1, depth from the wide shot itself | at least 70% | 62.0% (of 297) | 63.1% (of 244) |
+| M2, wide shot has more blur spread | at least 90% | 98.7% | 96.1% |
+
+Reading: on strongly defocused real photographs the lens law is clearly
+measurable: about 60% of pairs fit the V with half or more of the blur
+variance explained (median r2 about 0.57 to 0.60), against 2.5% on iDFD's
+indoor pairs. M1 still misses its threshold and M3 to M5 fail as before, so
+Gate M stays failed and direction A stays stopped. The earlier sentence "M1
+could not be tested fairly" is superseded: M1 was tested and narrowly fails.
+The accurate conclusion is that the law is measurable in most strongly
+defocused photographs but not reliably enough per image to serve as evidence.

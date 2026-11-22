@@ -26,7 +26,7 @@ PREFIX = "fakeradar-"
 HERE = Path(__file__).resolve().parent
 PKG_DIR = HERE / "lenslaw"
 RUNS_DIR = HERE.parents[1] / "runs" / "lens_law"
-MAX_STATUS_FAILURES = 20  # consecutive failed status checks before giving up
+MAX_STATUS_FAILURES = 120  # consecutive failed checks before giving up (about 1 h at 30 s)
 _NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _BOOTSTRAP = """
 import base64 as _b64

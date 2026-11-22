@@ -37,7 +37,8 @@ every number must be recomputable from them (paper/INTEGRITY_CHECKLIST.md).
 | model | train data | mean AUROC (8 gen) | AUROC @ jpeg50 | weights |
 |---|---|---|---|---|
 | fast-v0 | GenImage SD1.4, 95k images, 5 epochs | 0.9367 ± 0.0014 | 0.8385 ± 0.0068 | [HF](https://huggingface.co/JitendraJha98/fakeradar-fast) (CC-BY-NC-SA-4.0) |
-| accurate-v0 | GenImage SD1.4 | *not trained yet* | | |
+| accurate-v0 (3 seed) | GenImage SD1.4, 95k images, 5 epochs | 0.9416 ± 0.0032 | 0.9093 ± 0.0050 | not published |
+| Community Forensics (reference, re-evaluated) | thousands of generators | 0.9954 | 0.9327 | [HF](https://huggingface.co/OwensLab/commfor-model-384) (MIT) |
 <!-- leaderboard:end -->
 
 Rules: numbers must be reproducible from a manifest + checkpoint; clean and

@@ -143,10 +143,12 @@ abstain (4\% applicable versus 83\%), but real wide-aperture photographs fit
 the lens law \emph{worse} than the broken renders (median residual 0.40
 versus 0.27--0.39), so a threshold set on real photographs flags almost
 nothing; transport makes it worse. A stronger depth model of the same family
-and a metric depth model did not help. M1 could not be tested fairly: iDFD's
-defocus barely varies with depth. V-shaped blur profiles are visible in real
-photographs, so the law is present; single-image monocular measurement is too
-noisy to use it as evidence. Whether generators obey it remains open; a
+and a metric depth model did not help. On iDFD's indoor pairs defocus barely
+varies with depth, so M1 was also run on 310 DPDD scenes~\cite{abuolaim2020dpdd},
+where it does: 59--63\% of wide-aperture photographs fit the V (needed 80\% /
+70\%) and 96--99\% show more blur spread than their stopped-down twin. The
+law is therefore measurable in most strongly defocused photographs, but not
+reliably enough per image to serve as evidence. Whether generators obey it remains open; a
 stereo or dual-pixel measurement would be needed.
 
 \section{An Audited False-Accusation Guarantee}
@@ -212,14 +214,29 @@ fixed 0.5 cut on the pooled test is only 0.55--0.59 although ranking is good,
 the calibration-under-shift problem of \S\ref{sec:fpr}. Robustness degrades
 with JPEG quality (Table~\ref{tab:robust}).
 
+\paragraph{Accurate tier.} Adding a frozen CLIP ViT-B~\cite{radford2021clip}
+branch (three seeds) raises the clean mean AUROC only slightly but makes the
+detector markedly more robust to compression, resizing and blur, by more
+than the seed-to-seed spread in every condition (Table~\ref{tab:robust}); it
+is stronger on Midjourney, GLIDE and BigGAN and weaker on ADM and VQDM
+(Table~\ref{tab:main}).
+
 \paragraph{Coherence ablation.} Removing the coherence channel changes clean
 mean AUROC within seed noise, but costs 0.01--0.03 AUROC under strong JPEG
 and downscaling in both seed pairs (Table~\ref{tab:robust}). We claim no more
 than that; similar coherence features appear in public code.
 
-\paragraph{Baselines.} \tofill{re-run CNNDetection, NPR, UnivFD and Community
-Forensics under the identical protocol and perturbations, or remove this
-paragraph}.
+\paragraph{Reference detector.} The public Community Forensics
+model~\cite{park2025community}, scored on the same test images without
+retraining, reaches a clearly higher mean AUROC and stays stronger under
+every perturbation (Tables~\ref{tab:main} and~\ref{tab:robust}). It was
+trained on thousands of generators, very likely including GenImage's, so this
+is not a same-data comparison; it shows that broad training data, not
+architecture, dominates cross-generator accuracy at this scale, and that our
+small detector is not competitive on accuracy. Its contribution here is as an
+openly measured, CPU-class baseline and as the testbed for the guarantee.
+\tofill{baselines retrained on SD v1.4 only (CNNDetection, NPR, UnivFD) for a
+same-data comparison}.
 
 \section{Limitations and Ethics}
 All results use public 2020--2023 data and generators; none covers 2025--2026

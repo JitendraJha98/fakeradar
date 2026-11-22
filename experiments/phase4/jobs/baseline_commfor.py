@@ -64,10 +64,35 @@ def find(name: str) -> str:
     raise FileNotFoundError(name)
 
 
+def genimage_roots() -> list[str]:
+    """Every '.../GenImage' folder mounted in this notebook (mount paths vary between runs)."""
+    roots = []
+    for base, dirs, _files in os.walk("/kaggle/input"):
+        if "GenImage" in dirs:
+            roots.append(os.path.join(base, "GenImage"))
+            dirs.remove("GenImage")
+        if base.count(os.sep) > 6:
+            dirs[:] = []
+    return roots
+
+
+ROOTS = genimage_roots()
+
+
+def remap(path: str) -> str:
+    """Re-point a saved path at this notebook's mount, by its 'GenImage/...' suffix."""
+    tail = path.split("/GenImage/", 1)[1]
+    for root in ROOTS:
+        candidate = os.path.join(root, tail)
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(f"{tail} not under any of {ROOTS}")
+
+
 def read(path: str) -> list[dict]:
     with open(path, encoding="utf-8") as f:
         return [
-            {"path": r["path"], "label": int(r["label"]), "generator": r["generator"]}
+            {"path": remap(r["path"]), "label": int(r["label"]), "generator": r["generator"]}
             for r in csv.DictReader(f)
         ]
 

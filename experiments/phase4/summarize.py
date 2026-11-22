@@ -16,6 +16,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2] / "runs" / "lens_law"
 MAIN = {"42": "phase4-train-fast", "43": "phase4-seed43", "44": "phase4-seed44"}
 ABLATION = {"42": "phase4-nocoh42", "43": "phase4-nocoh43"}
+ACCURATE = {"42": "phase4-accurate42", "43": "phase4-accurate43", "44": "phase4-accurate44"}  # accurate tier: adds the frozen CLIP ViT-B branch
+# Reference detector re-evaluated (not retrained) on the same test images: public
+# Community Forensics weights, trained on thousands of generators.
+BASELINE = {"commfor": "phase4-baseline-commfor"}
 GENERATORS = (
     "stable_diffusion_v_1_4",
     "stable_diffusion_v_1_5",
@@ -70,6 +74,9 @@ def summarize(root: Path = ROOT) -> str:
     ab = {s: benchmark(p / "benchmark_equalized.md") for s, p in abl.items()}
     rob = {s: robustness(p / "robustness_equalized.md") for s, p in main.items()}
     rob_ab = {s: robustness(p / "robustness_equalized.md") for s, p in abl.items()}
+    acc = available(ACCURATE, root)
+    acc_eq = {s: benchmark(p / "benchmark_equalized.md") for s, p in acc.items()}
+    acc_rob = {s: robustness(p / "robustness_equalized.md") for s, p in acc.items()}
 
     def col(data, gen, key="auroc"):
         return [d[gen][key] for d in data.values()]
@@ -117,6 +124,50 @@ def summarize(root: Path = ROOT) -> str:
         ]
         for g in (*GENERATORS, "MEAN"):
             lines.append(f"| {g} | {fmt(col(eq, g))} | {fmt(col(ab, g))} |")
+    base = available(BASELINE, root)
+    if base:
+        b_eq = [benchmark(p / "benchmark_equalized.md") for p in base.values()]
+        b_raw = [benchmark(p / "benchmark_raw.md") for p in base.values()]
+        b_rob = [robustness(p / "robustness_equalized.md") for p in base.values()]
+        lines += [
+            "",
+            "## Reference: Community Forensics (re-evaluated, not retrained)",
+            "",
+            "Public weights `OwensLab/commfor-model-384`, trained on thousands of generators",
+            "(very likely including GenImage's), scored on the same test images. Not a",
+            "same-training-data comparison.",
+            "",
+            "| Generator / condition | fakeradar fast | Community Forensics |",
+            "|---|---|---|",
+        ]
+        for g in (*GENERATORS, "MEAN"):
+            lines.append(f"| {g} | {fmt(col(eq, g))} | {fmt([d[g]['auroc'] for d in b_eq])} |")
+        lines.append(
+            f"| MEAN, as stored | {fmt(col(raw, 'MEAN'))} | {fmt([d['MEAN']['auroc'] for d in b_raw])} |"
+        )
+        for c in CONDITIONS:
+            lines.append(
+                f"| robustness: {c} | {fmt([r[c] for r in rob.values()])} | "
+                f"{fmt([r[c] for r in b_rob])} |"
+            )
+    if acc:
+        seeds = ", ".join(sorted(acc))
+        lines += [
+            "",
+            f"## Accurate tier (adds a frozen CLIP ViT-B branch; seed {seeds}, equalized)",
+            "",
+            "Same data, epochs and test sets as the fast tier.",
+            "",
+            "| Generator / condition | Fast tier | Accurate tier |",
+            "|---|---|---|",
+        ]
+        for g in (*GENERATORS, "MEAN"):
+            lines.append(f"| {g} | {fmt(col(eq, g))} | {fmt(col(acc_eq, g))} |")
+        for c in CONDITIONS:
+            lines.append(
+                f"| robustness: {c} | {fmt([r[c] for r in rob.values()])} | "
+                f"{fmt([r[c] for r in acc_rob.values()])} |"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -154,8 +205,27 @@ def docs_tables(root: Path = ROOT) -> tuple[str, str]:
         f"| fast-v0 | GenImage SD1.4, 95k images, 5 epochs | "
         f"{fmt([d['MEAN']['auroc'] for d in eq.values()])} | "
         f"{fmt([r['jpeg50'] for r in rob.values()])} | [HF]({HF}) (CC-BY-NC-SA-4.0) |",
-        "| accurate-v0 | GenImage SD1.4 | *not trained yet* | | |",
     ]
+    acc = available(ACCURATE, root)
+    if acc:
+        a_eq = [benchmark(p / "benchmark_equalized.md") for p in acc.values()]
+        a_rob = [robustness(p / "robustness_equalized.md") for p in acc.values()]
+        board.append(
+            f"| accurate-v0 ({len(acc)} seed) | GenImage SD1.4, 95k images, 5 epochs | "
+            f"{fmt([d['MEAN']['auroc'] for d in a_eq])} | {fmt([r['jpeg50'] for r in a_rob])} | "
+            "not published |"
+        )
+    base = available(BASELINE, root)
+    if base:
+        c_eq = [benchmark(p / "benchmark_equalized.md") for p in base.values()]
+        c_rob = [robustness(p / "robustness_equalized.md") for p in base.values()]
+        board.append(
+            "| Community Forensics (reference, re-evaluated) | thousands of generators | "
+            f"{fmt([d['MEAN']['auroc'] for d in c_eq])} | {fmt([r['jpeg50'] for r in c_rob])} | "
+            "[HF](https://huggingface.co/OwensLab/commfor-model-384) (MIT) |"
+        )
+    else:
+        board.append("| accurate-v0 | GenImage SD1.4 | *not trained yet* | | |")
     return chr(10).join(rows), chr(10).join(board)
 
 
