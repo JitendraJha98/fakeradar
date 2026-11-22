@@ -66,7 +66,7 @@ credibility. Work through every item below, in order.
 - [ ] Ten references were added on 2026-11-22 from web searches (marked in
       references.bib). Verify every field.
 - [ ] Baselines under the identical protocol: still [TO FILL].
-- [ ] The final 3-seed mean in the abstract: still [TO FILL] until seed 44 lands
-      and make_tables.py is re-run.
+- [x] The final 3-seed mean in the abstract is filled (0.937, from Table 1).
+
 - [ ] The paper has not been compiled: no LaTeX toolchain on the authoring
       machine. Compile and fix layout before sharing.

@@ -108,20 +108,20 @@ fakeradar calibrate data/manifests/genimage_stable_diffusion_v_1_4_val.csv --che
 Protocol: train on **one** generator (GenImage SD v1.4), evaluate on **all eight** + in-the-wild sets, clean **and** perturbed. Full protocol in [docs/benchmarks.md](docs/benchmarks.md).
 
 <!-- results:start -->
-fast-v0, trained on GenImage SD v1.4 only; AUROC, mean ± std over 2 seeds;
+fast-v0, trained on GenImage SD v1.4 only; AUROC, mean ± std over 3 seeds;
 compression history equalized. Full tables: [experiments/phase4/RESULTS.md](experiments/phase4/RESULTS.md).
 
 | test generator | AUROC |
 |---|---|
-| stable_diffusion_v_1_4 | 0.9996 ± 0.0001 |
+| stable_diffusion_v_1_4 | 0.9995 ± 0.0001 |
 | stable_diffusion_v_1_5 | 0.9994 ± 0.0001 |
-| wukong | 0.9953 ± 0.0003 |
-| VQDM | 0.9224 ± 0.0013 |
-| Midjourney | 0.9203 ± 0.0083 |
+| wukong | 0.9955 ± 0.0004 |
+| VQDM | 0.9257 ± 0.0057 |
+| Midjourney | 0.9233 ± 0.0078 |
 | glide | 0.8932 ± 0.0001 |
-| BigGAN | 0.8965 ± 0.0103 |
-| ADM | 0.8623 ± 0.0314 |
-| **mean of 8** | **0.9362 ± 0.0015** |
+| BigGAN | 0.8977 ± 0.0076 |
+| ADM | 0.8591 ± 0.0229 |
+| **mean of 8** | **0.9367 ± 0.0014** |
 <!-- results:end -->
 
 We publish robustness tables alongside every release. A detector that only reports clean-set accuracy is hiding something.
