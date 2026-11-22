@@ -17,6 +17,7 @@ from pathlib import Path
 import torch
 import yaml
 
+from fakeradar.config import get_preset
 from fakeradar.detector import Detector
 from fakeradar.evaluation.benchmark import run_benchmark, run_robustness
 from fakeradar.training.genimage import discover_generators, rows_for, stratified_holdout
@@ -28,6 +29,8 @@ N_TEST_REAL = 2000
 N_ROBUST_PER_CLASS = 500
 EPOCHS = 5
 EQUALIZE = 96
+SEED = 42  # training seed; the data subset is the same for every seed
+USE_COHERENCE = True  # False = the coherence ablation
 TRAIN_GENERATOR = "stable_diffusion_v_1_4"
 OUT = Path("/kaggle/working")
 rng = random.Random(0)
@@ -89,8 +92,12 @@ report["seconds"]["manifests"] = int(time.time() - t0)
 report["test_generators"] = sorted({r[2] for r in test_rows})
 print(json.dumps(report, indent=1), flush=True)
 
+detector = get_preset("fast").to_dict()
+if not USE_COHERENCE:
+    detector["branches"][0]["params"]["use_coherence"] = False
+report["seed"], report["use_coherence"] = SEED, USE_COHERENCE
 config = {
-    "detector": "fast",
+    "detector": detector,
     "data": {
         "train_manifest": str(manifests / "train.csv"),
         "val_manifest": str(manifests / "val.csv"),
@@ -110,7 +117,7 @@ config = {
     "run": {
         "out_dir": str(OUT / "run"),
         "device": "auto",
-        "seed": 42,
+        "seed": SEED,
         "log_every": 50,
         "calibrate": True,
     },

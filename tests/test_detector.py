@@ -59,3 +59,12 @@ def test_checkpoint_with_nan_temperature_is_rejected(tmp_path):
     save_checkpoint(model, p)
     with pytest.raises(ValueError, match="invalid calibration temperature"):
         load_checkpoint(p)
+
+
+def test_fast_v0_zoo_entry_points_at_the_published_repo():
+    from fakeradar.models import MODEL_ZOO
+
+    assert MODEL_ZOO["fast-v0"] == {
+        "repo_id": "JitendraJha98/fakeradar-fast",
+        "filename": "fast_v0.pt",
+    }

@@ -119,8 +119,9 @@ def model_from_checkpoint(ckpt: dict[str, Any]) -> FakeRadarModel:
 
 # ---------------------------------------------------------------- model zoo
 MODEL_ZOO: dict[str, dict[str, str]] = {
-    # Published after v0.1 training runs — see ROADMAP.md.
-    "fast-v0": {"repo_id": "jitendra-jha/fakeradar-fast", "filename": "fast_v0.pt"},
+    # fast-v0: GenImage SD v1.4 only, weights CC-BY-NC-SA-4.0 (see the model card).
+    "fast-v0": {"repo_id": "JitendraJha98/fakeradar-fast", "filename": "fast_v0.pt"},
+    # Not trained yet.
     "accurate-v0": {"repo_id": "jitendra-jha/fakeradar-accurate", "filename": "accurate_v0.pt"},
 }
 

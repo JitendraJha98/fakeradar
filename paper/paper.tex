@@ -1,11 +1,13 @@
 % =========================================================================
-% GRAFT — working draft. DO NOT SUBMIT until:
-%   (1) every [TO FILL] table is completed with real experiments,
-%   (2) every citation is re-verified against arXiv/DBLP,
-%   (3) a fresh literature sweep (last 6 months) confirms novelty claims,
-%   (4) the text is revised in the author's own voice.
-% See INTEGRITY_CHECKLIST.md in this folder.
-% Retarget to the venue template (NeurIPS/CVPR/WACV .sty) before submission.
+% WORKING DRAFT (restructured 2026-11-22 around measured results).
+% DO NOT SUBMIT until:
+%   (1) every [TO FILL] is completed with real experiments (baselines),
+%   (2) every citation is re-verified against arXiv/DBLP/the PDF,
+%   (3) a fresh literature sweep confirms the remaining "first" statements,
+%   (4) the text is rewritten in the author's own voice.
+% All result tables are \input from generated_tables.tex, written by
+% make_tables.py from the saved result files. Never edit those numbers by hand.
+% See INTEGRITY_CHECKLIST.md.
 % =========================================================================
 \documentclass[10pt,twocolumn]{article}
 \usepackage[margin=0.75in,columnsep=0.25in]{geometry}
@@ -16,11 +18,9 @@
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 
 \newcommand{\tofill}[1]{\textcolor{red}{\textbf{[TO FILL: #1]}}}
-\newcommand{\real}{\mathrm{real}}
-\newcommand{\fake}{\mathrm{ai}}
 
-\title{\textbf{GRAFT: Gradient-Field Representations and Frozen-Backbone\\
-Fusion for Robust Detection of AI-Generated Images}}
+\title{\textbf{Bounding False Accusations in AI-Generated Image Detection:\\
+an Audited Guarantee, an Honest Benchmark, and a Negative Result on Lens Physics}}
 \author{Jitendra Jha\\
 \small Independent Researcher\\
 \small \texttt{github.com/JitendraJha98/fakeradar}}
@@ -29,366 +29,218 @@ Fusion for Robust Detection of AI-Generated Images}}
 \begin{document}
 \maketitle
 
-\begin{center}
-\fbox{\parbox{0.95\columnwidth}{\small\textcolor{red}{\textbf{WORKING DRAFT.}}
-Method, protocol, and related work are complete; all experimental numbers are
-pending and marked \tofill{}. This document must not be submitted or
-distributed as a completed study until every placeholder is replaced with
-results reproduced by the released code.}}
-\end{center}
-
 \begin{abstract}
-Detectors of AI-generated images fail along two axes that matter in
-deployment: they collapse on images from \emph{unseen} generators, and they
-collapse when images traverse real transport chains (JPEG re-encoding,
-resizing, platform re-processing). We present GRAFT, a detection architecture
-that fuses two families of evidence with complementary failure modes: a
-\emph{learnable gradient-field branch} operating on native-resolution crops
---- combining steganalysis-style high-pass residuals, an up-sampling
-(NPR-style) residual, and, novelly in this context, the \emph{structure-tensor
-coherence} of the image gradient field --- with \emph{frozen}
-vision--language-model features, whose resistance to generator overfitting is
-preserved precisely because the backbone is never fine-tuned. A gated fusion
-head with per-branch deep supervision yields a single temperature-calibrated
-probability together with interpretable per-branch scores, and an explicit
-abstention band. Training passes every image through a simulated transport
-chain, making robustness a training-time property rather than an evaluation
-afterthought. Under the strictest GenImage protocol (train on Stable Diffusion
-v1.4 only, test on eight generators), GRAFT attains \tofill{mean AUROC},
-retaining \tofill{AUROC at JPEG quality 50} under recompression, versus
-\tofill{best baseline}. Code, weights, and the full evaluation harness are
-released.
+Detectors of AI-generated images are usually reported by ranking metrics on
+benchmarks that resemble their training data, while the decision that matters
+in practice --- flagging a real photograph as fake --- is left to a fixed 0.5
+threshold. We study three questions. First, can single-image lens physics
+serve as generator-independent evidence? We test whether defocus blur follows
+the thin-lens law against monocular depth, with acceptance criteria fixed in
+advance, and find that it cannot be measured reliably: real wide-aperture
+photographs fit the law worse than images with deliberately broken blur, with
+both a classical and a learned blur estimator. Second, can the rate of false
+accusations be bounded without any assumption about generators? Using
+split-conformal thresholds calibrated on real photographs only, stratified by
+sharing platform, the realised false-accusation rate on 11 smartphones never
+used for calibration stays at the target (4.7--5.9\% at a 5\% target,
+0.8--1.3\% at 1\%) across camera originals and four platforms, and on a fifth
+platform held out of calibration. Third, what does a small detector achieve
+when the JPEG/PNG shortcut of GenImage is closed? A 12M-parameter
+gradient-and-frequency detector trained on Stable Diffusion v1.4 reaches a
+mean AUROC of \tofill{final 3-seed mean from Table~\ref{tab:main}} over
+eight generators, near-perfect on its training family and clearly weaker on
+GAN- and ADM-based generators. Code, weights and every raw
+score are released.
 \end{abstract}
 
 \section{Introduction}
-Photorealistic image generators --- latent diffusion systems, autoregressive
-image models, and their commercial descendants --- have made fabricated
-imagery cheap at consumer scale. The forensic response, a decade of
-increasingly capable ``real vs.\ generated'' classifiers, suffers from a
-well-documented pair of gaps between benchmark and deployment. First,
-\emph{generator generalization}: a detector trained on one generator family
-tends to key on that family's idiosyncratic artifacts and degrades sharply on
-newer models~\cite{wang2020cnn,gragnaniello2021gan,zhu2023genimage}. Second,
-\emph{transport robustness}: the high-frequency traces most detectors exploit
-are attenuated or destroyed by the compression--resize pipelines of messaging
-and social platforms~\cite{gragnaniello2021gan,corvi2023detection}, and
-adversarial post-processing can defeat detectors with theoretical
-backing~\cite{saberi2024robustness}.
+Photorealistic generators have made fabricated imagery cheap. Detectors fail
+in deployment along two well-documented axes: they degrade on generators not
+seen in training~\cite{wang2020cnn,zhu2023genimage}, and on images that have
+passed through compression and resizing~\cite{gragnaniello2021gan,corvi2023detection}.
+A third failure receives less attention: the probability a detector outputs
+is calibrated, if at all, on data resembling its training set, so a fixed
+threshold carries no guarantee about how often a \emph{real} photograph is
+flagged once the data shift. For the people affected, that false-accusation
+rate is the number that matters.
 
-The literature contains two strong but largely separate responses. One line
-makes \emph{low-level traces} more generator-agnostic: gradients of the image
-with respect to a pretrained model (LGrad~\cite{tan2023lgrad}), local
-up-sampling residuals (NPR~\cite{tan2024npr}), and spectral
-statistics~\cite{durall2020watch,frank2020leveraging}. A second line abandons
-low-level traces altogether and reads \emph{frozen foundation-model feature
-spaces}, in which generated images cluster even for unseen generators
-(UniversalFakeDetect~\cite{ojha2023universal}; CLIP-based
-successors~\cite{cozzolino2024raising,liu2024fatformer}). These families fail
-differently: low-level branches are strongest on clean, native-resolution
-inputs and degrade under recompression; frozen-feature branches survive
-transport better but are weaker at separating high-fidelity images whose
-semantics are unremarkable. Hybrid designs are beginning to appear
-\cite{yan2025sanity}, but --- to our knowledge, as of this draft --- no
-published method fuses a \emph{learnable gradient-field representation} with
-a \emph{frozen} vision--language backbone under a \emph{robustness-first}
-training protocol with calibrated, abstaining outputs. GRAFT is that design,
-released as a maintained open-source system rather than a one-off research
-artifact.
-
-Our contributions:
+This paper reports three results, each obtained under acceptance criteria
+written down before any score was computed.
 \begin{enumerate}\itemsep2pt
-  \item \textbf{A gradient-field forensic representation} stacking SRM
-  high-pass residuals~\cite{fridrich2012rich}, an NPR-style up-sampling
-  residual~\cite{tan2024npr}, gradient magnitude, and --- new in this context
-  --- the structure-tensor \emph{coherence} of the gradient field, an
-  explicit, resolution-preserving measure of the anomalous local gradient
-  alignment of synthetic texture (\S\ref{sec:gradient}).
-  \item \textbf{Gated frozen-backbone fusion} with per-branch deep
-  supervision: complementary evidence is combined by a learned gate whose
-  weights, together with per-branch probabilities, are exposed as an
-  interpretability signal; the semantic backbone stays frozen to preserve its
-  cross-generator behavior (\S\ref{sec:fusion}).
-  \item \textbf{A robustness-first protocol}: transport-chain augmentation at
-  training time; native-resolution multi-crop inference that never resamples
-  the evidence; temperature-calibrated probabilities with an abstention band;
-  and mandatory reporting of perturbed-set metrics, TPR at fixed low FPR, and
-  calibration error alongside clean AUROC (\S\ref{sec:protocol}).
-  \item \textbf{Reproducible release}: training, evaluation, and robustness
-  harnesses, plus weights, as the open-source system \texttt{fakeradar}.
+  \item \textbf{A negative result on lens-law evidence} (\S\ref{sec:lens}).
+  A photograph is formed through one lens, so blur size is proportional to
+  $|D - D_f|$ for inverse depth $D$. We test whether this law can be measured
+  in single images well enough to expose generated images. It cannot:
+  Gate~M fails with both a classical and a learned blur estimator.
+  \item \textbf{An audited false-accusation guarantee} (\S\ref{sec:fpr}).
+  Split-conformal thresholds from real photographs only, stratified by
+  sharing platform, keep the realised rate at the target on phones never used
+  for calibration (Gate~B passes, 10 of 10 checks).
+  \item \textbf{An honest small-detector benchmark} (\S\ref{sec:bench}).
+  Closing GenImage's compression shortcut~\cite{grommelt2024fake} and
+  reporting three seeds, raw scores and an ablation, we measure what a
+  12M-parameter CPU-class detector achieves.
 \end{enumerate}
 
 \section{Related Work}
-\paragraph{CNN classifiers and their limits.}
-Wang et al.~\cite{wang2020cnn} showed a ResNet trained on one GAN transfers
-surprisingly well across CNN generators given aggressive augmentation --- and
-established the now-standard caveat that this transfer is fragile.
-Gragnaniello et al.~\cite{gragnaniello2021gan} documented how quickly such
-detectors decay under resizing and compression; Corvi et
-al.~\cite{corvi2023detection} extended the critical analysis to diffusion
-models.
+\paragraph{Low-level and semantic detectors.}
+High-pass residuals~\cite{fridrich2012rich}, gradients of a pretrained
+network~\cite{tan2023lgrad}, up-sampling residuals~\cite{tan2024npr} and
+spectral statistics~\cite{durall2020watch,frank2020leveraging} target
+generation artifacts; frozen foundation-model features generalise better
+across generators~\cite{ojha2023universal,cozzolino2024raising,liu2024fatformer}.
+Hybrids that fuse both are established~\cite{yan2025sanity,cheng2025cospy}; our
+detector is such a hybrid and we claim no novelty for its architecture.
 
-\paragraph{Gradient- and residual-domain detection.}
-Steganalysis rich models~\cite{fridrich2012rich} established fixed high-pass
-residuals as content-suppressing noise descriptors. LGrad~\cite{tan2023lgrad}
-converts images into gradients of a pretrained CNN, learning on a
-generalized artifact representation; NPR~\cite{tan2024npr} shows that a
-simple neighboring-pixel relation targeting up-sampling operators
-generalizes broadly across CNN-based generators. GRAFT's gradient branch is
-a superset of these signals and adds the structure-tensor coherence channel;
-unlike LGrad/NPR it is trained \emph{jointly} with, and gated against,
-frozen semantic features.
+\paragraph{Physical and geometric cues.}
+Generated images violate projective geometry and shadow
+constraints~\cite{sarkar2024shadows}. Defocus maps have been used as learned
+features for deepfake detection~\cite{jeon2025defocus}, without depth or a
+lens-law test. We test the thin-lens law directly.
 
-\paragraph{Frequency-domain detection.}
-Up-convolutions imprint spectral anomalies~\cite{durall2020watch}, and
-frequency inputs alone support strong detection~\cite{frank2020leveraging}.
-We retain an azimuthally averaged log-power spectrum as a compact,
-cheap branch rather than a stand-alone detector.
+\paragraph{Dataset biases.}
+GenImage stores real photographs as JPEG and generated images as PNG, and
+detectors learn compression as a shortcut~\cite{grommelt2024fake}.
 
-\paragraph{Frozen foundation-model features.}
-Ojha et al.~\cite{ojha2023universal} demonstrated that nearest-neighbor and
-linear probes in frozen CLIP~\cite{radford2021clip} space generalize across
-generator families where end-to-end CNNs fail; Cozzolino et
-al.~\cite{cozzolino2024raising} and FatFormer~\cite{liu2024fatformer}
-strengthen this line. We deliberately keep this branch frozen and lightweight
-(linear projection only), treating it as ballast for distribution shift.
+\paragraph{Calibration and guarantees.}
+Post-hoc calibration of synthetic-image detectors has been
+studied~\cite{guo2017calibration}, and quality-aware calibration over
+near-duplicate copies was proposed recently~\cite{guillaro2026quad}.
+Conformal prediction gives distribution-free error control under
+exchangeability~\cite{vovk2005algorithmic,angelopoulos2023gentle} and has been
+used for watermark detection and machine-generated text; we did not find it
+applied to unwatermarked AI-image detection with an audit across devices and
+platforms \tofill{re-run the literature sweep before submission}.
 
-\paragraph{Reconstruction-error methods.}
-DIRE~\cite{wang2023dire} and AEROBLADE~\cite{ricker2024aeroblade} detect
-diffusion images via reconstruction error under a diffusion model or its
-autoencoder. These require running (parts of) a generator at inference; we
-exclude them from GRAFT's core to preserve local, CPU-class deployment, and
-treat them as an optional plug-in branch in the released system.
+\section{Lens-Law Evidence: A Negative Result}
+\label{sec:lens}
+\paragraph{Test.} For each image we estimate blur per $32{\times}32$ cell and
+inverse depth with Depth Anything V2 Small~\cite{yang2024depthv2}, fit
+$b(D) = \tfrac12\log(c_0^2 + k^2(D-D_f)^2)$ to log blur, and use the robust
+fit residual as the score; images without visible depth of field abstain.
 
-\paragraph{Benchmarks and robustness limits.}
-GenImage~\cite{zhu2023genimage} standardizes the cross-generator protocol we
-adopt; Chameleon~\cite{yan2025sanity} stresses in-the-wild difficulty and its
-companion method AIDE demonstrates mixture-of-experts hybrids; Community
-Forensics~\cite{park2025community} scales generator diversity in training.
-Saberi et al.~\cite{saberi2024robustness} give fundamental limits and
-practical attacks; we therefore report perturbed metrics as first-class
-results and position GRAFT's claims within, not against, those limits.
+\paragraph{Gate M.} Before scoring any image we fixed five checks: real
+aperture pairs must fit the V (M1); a wide-aperture shot must show more blur
+spread than its narrow twin (M2); controlled renders of real photographs with
+deliberately broken blur (step, image-row, missing foreground) must be
+separable from lawful renders (M3); at a threshold flagging 5\% of real
+wide-aperture photographs, at least half the broken renders must be flagged
+(M4); and the separation must survive 0.5$\times$ downscaling with JPEG 70
+(M5). Data: 349 iDFD indoor pairs with measured depth, 631 Unsplash
+photographs shot at f/2.8 or wider, and renders from 248 photographs at f/8 or
+narrower, all from the development split.
 
-\section{Method}
-\label{sec:method}
-Given image $x \in [0,1]^{3\times H\times W}$, GRAFT outputs
-$\hat p = P(y{=}\fake \mid x)$, per-branch probabilities, and gate weights.
-Branches consume \emph{native-resolution} crops $c \in
-[0,1]^{3\times S\times S}$ (default $S{=}256$); only the semantic branch sees
-a resized global view. Nothing the forensic branches consume is ever
-resampled (upscaling occurs only if $\min(H,W)<S$).
+\paragraph{Estimators.} A classical multi-scale edge gradient-ratio estimator
+after Zhuo and Sim~\cite{zhuo2011defocus}, and a learned estimator (0.92M
+parameters) trained only on real sharp photographs with synthetic defocus
+applied in linear light, which predicts log blur and its uncertainty per cell.
 
-\subsection{Gradient-field branch}
-\label{sec:gradient}
-The branch input is a $17$-channel stack $\Phi(c)$ of gradient-domain maps.
+\input{generated_tables_gatem}
 
-\paragraph{(i) SRM residuals.} Four fixed $5{\times}5$ high-pass kernels
-$\{w_k\}_{k=1}^{4}$ (the KV kernel, a Laplacian, and Scharr-normalized
-horizontal/vertical derivative kernels), applied depthwise:
-$r^{(k)}_{ch} = w_k * c_{ch}$, giving $12$ channels that suppress content and
-retain synthesis noise~\cite{fridrich2012rich}.
+\paragraph{Result.} Gate~M fails with both estimators
+(Table~\ref{tab:gatem}). The learned estimator fixes M2 and makes sharp shots
+abstain (4\% applicable versus 83\%), but real wide-aperture photographs fit
+the lens law \emph{worse} than the broken renders (median residual 0.40
+versus 0.27--0.39), so a threshold set on real photographs flags almost
+nothing; transport makes it worse. A stronger depth model of the same family
+and a metric depth model did not help. M1 could not be tested fairly: iDFD's
+defocus barely varies with depth. V-shaped blur profiles are visible in real
+photographs, so the law is present; single-image monocular measurement is too
+noisy to use it as evidence. Whether generators obey it remains open; a
+stereo or dual-pixel measurement would be needed.
 
-\paragraph{(ii) Up-sampling (NPR-style) residual.} With bilinear operators
-$D_{\downarrow2}, U_{\uparrow2}$,
-\begin{equation}
-r_{\mathrm{npr}} = c - U_{\uparrow2}\!\left(D_{\downarrow2}(c)\right),
-\end{equation}
-isolating traces of the up-sampling stages ubiquitous in generative
-decoders~\cite{tan2024npr} ($3$ channels).
+\section{An Audited False-Accusation Guarantee}
+\label{sec:fpr}
+\paragraph{Method.} Given scores $s_1,\dots,s_n$ of real calibration photos
+in stratum $k$ (here: camera original or the sharing platform), the
+threshold $t_k$ is the $\lceil (n+1)(1-\alpha)\rceil$-th smallest score; a
+photo is flagged when its score exceeds $t_k$. If a new real photo is
+exchangeable with the calibration photos of its stratum, it is flagged with
+probability at most $\alpha$~\cite{vovk2005algorithmic}. No generated image
+enters, so the bound cannot be broken by a new generator, only by a shift in
+the real photographs; strata too small for level $\alpha$ use a pooled
+threshold.
 
-\paragraph{(iii) Gradient magnitude and coherence.} Let $I$ be the luma of
-$c$ and $g = (g_x, g_y) = (\mathrm{Sch}_x * I,\ \mathrm{Sch}_y * I)$ its
-Scharr gradient field. With a $7{\times}7$ box filter $B$ we form the
-structure tensor $J = B * (g g^\top)$ and its \emph{coherence}
-\begin{equation}
-\kappa \;=\; \frac{\sqrt{(J_{11}-J_{22})^2 + 4J_{12}^2}}
-{J_{11}+J_{22}+\varepsilon} \;\in\; [0,1],
-\label{eq:coherence}
-\end{equation}
-the normalized eigenvalue anisotropy of local gradient orientation. Camera
-imagery exhibits characteristic coherence statistics induced by optics,
-demosaicing, and natural texture; synthesized micro-texture --- produced by
-up-sampling stacks and attention-mediated decoders --- exhibits anomalous
-local gradient alignment. To our knowledge, coherence of the gradient field
-has not previously been used as an explicit input representation for
-generated-image detection; we ablate its contribution in
-\S\ref{sec:ablations}. Together with $|g|$ this adds $2$ channels.
+\paragraph{Audit (Gate B).} Detector: Community Forensics~\cite{park2025community}
+(public MIT weights). Data: FODB~\cite{hadwiger2021forchheim}, 143 scenes
+from 27 smartphones, each as camera original and as shared through Facebook,
+Instagram, Telegram, Twitter and WhatsApp; 23{,}105 photos scored. Phones were
+split 16/11 into calibration and audit by a fixed hash; Telegram was never
+used for calibration. The pass rule was fixed in advance: a check passes if
+the realised rate is at most $1.5\times$ the target or its 95\% phone-bootstrap
+interval reaches the target; the gate passes if at most one of ten checks
+misses and none exceeds $2\times$.
 
-A ResNet-18~\cite{he2016resnet} encoder (first convolution widened to $17$
-input channels, ${\sim}11$M parameters) maps $\Phi(c)$ to
-$f_{\mathrm{grad}} \in \mathbb{R}^{512}$. Optionally, an LGrad-style
-channel~\cite{tan2023lgrad} --- the input-gradient of a frozen pretrained
-classifier --- can be concatenated; it is disabled in the default
-configuration to keep the fast tier download-free.
+\input{generated_tables_gateb}
 
-\subsection{Frequency branch}
-For luma spectrum $F = \mathcal{F}(I)$ and annuli $A_\rho$ of normalized
-radius $\rho$, the azimuthally averaged log-power profile is
-\begin{equation}
-P(\rho) = \tfrac{1}{|A_\rho|}\!\!\sum_{(u,v)\in A_\rho}\!\!
-\log\!\left(1+|F(u,v)|\right),\quad \rho \in \{1,\dots,128\},
-\end{equation}
-standardized per image and concatenated with four band-energy statistics; a
-two-layer MLP yields $f_{\mathrm{freq}} \in \mathbb{R}^{256}$
-\cite{durall2020watch,frank2020leveraging}.
+\paragraph{Result.} Gate~B passes with no misses (Table~\ref{tab:gateb}).
+Stratification matters: a single pooled threshold flags 10.0\% of camera
+originals at a 5\% target, because platform re-encoding shifts real scores.
+The detector's own 0.5 cut flags almost no real photographs (0--0.4\%) but
+also misses more generated images after transport (Table~\ref{tab:power}).
+Limits: one detector; 2020-era phones and platforms; generated images for the
+detection-rate step come from one generator (SDXL), likely within the
+detector's training distribution, with simulated transport.
 
-\subsection{Frozen semantic branch}
-A CLIP ViT-B/16 image encoder~\cite{radford2021clip}, weights frozen, maps
-the resized global view to features projected by a single trainable
-linear layer to $f_{\mathrm{sem}} \in \mathbb{R}^{768}$. Freezing is a design
-requirement, not a compute convenience: fine-tuning collapses the
-cross-generator structure of the space~\cite{ojha2023universal}.
+\input{generated_tables_power}
 
-\subsection{Gated fusion, deep supervision, calibration}
-\label{sec:fusion}
-Each branch feature is projected to a shared space,
-$z_b = \mathrm{GELU}(\mathrm{LN}(W_b f_b))$, and combined by a learned gate
-$\alpha = \mathrm{softmax}(\gamma) \in \Delta^{B-1}$:
-\begin{equation}
-h = \textstyle\sum_b \alpha_b z_b, \qquad
-s = \mathrm{MLP}(h), \qquad
-\hat p = \sigma(s/T),
-\end{equation}
-with temperature $T$ fitted post hoc~\cite{guo2017calibration} on a
-stratified hold-out of the \emph{training} generator's data (never on test
-data), using the same crop-averaged logit that is scored at inference. Auxiliary heads give per-branch logits $s_b$;
-the loss is
-\begin{equation}
-\mathcal{L} = \mathrm{BCE}(y, s) + \frac{\lambda}{B}\sum_b \mathrm{BCE}(y, s_b),
-\qquad \lambda = 0.3 .
-\end{equation}
-Deep supervision stabilizes optimization and makes $(\alpha_b, \sigma(s_b))$
-a per-image explanation of \emph{which evidence fired}. At inference, logits
-are averaged over $K$ native crops drawn from a $3{\times}3$ grid --- center
-first, then corners, then edge midpoints (default $K{=}4$ fast, $K{=}8$
-accurate) --- and $\hat p$ is mapped to \{\texttt{likely\_real},
-\texttt{uncertain}, \texttt{likely\_ai}\} via thresholds $(\tau_r, \tau_f)$;
-abstention is an explicit, reported outcome.
+\section{A Small Detector, Benchmarked Honestly}
+\label{sec:bench}
+\paragraph{Model.} A gradient-field branch (SRM residuals, an up-sampling
+residual~\cite{tan2024npr}, gradient magnitude and structure-tensor
+coherence of the luma gradient) on a ResNet-18~\cite{he2016resnet}, a radial
+power-spectrum branch, a learned global softmax gate, auxiliary per-branch
+heads and temperature calibration; native-resolution crops, never resized;
+about 12M parameters.
 
-\subsection{Robustness-first training}
-\label{sec:protocol}
-Every training image passes a stochastic \emph{transport chain}: JPEG
-re-encoding (quality $\sim\mathcal{U}\{30,\dots,95\}$, $p{=}0.5$), WebP
-($p{=}0.1$), rescaling (factor $\mathcal{U}[0.5,1.5]$, $p{=}0.3$), Gaussian
-blur ($p{=}0.15$), sensor-style noise ($p{=}0.1$), and horizontal flip ---
-before random cropping. This follows the augmentation-for-generalization
-insight of~\cite{wang2020cnn}, extended to the full re-encode--resize
-pipeline that field images actually traverse, and paired with
-\emph{mandatory} perturbed-set reporting at evaluation.
+\paragraph{Protocol.} Train on GenImage~\cite{zhu2023genimage} Stable
+Diffusion v1.4 only: 95{,}000 images sampled from 324{,}000, 5\% more held out
+for model selection and calibration, 5 epochs on one T4 GPU, with
+transport-chain augmentation. Test on GenImage's \texttt{val} split of all
+eight generators: 1{,}000 generated images per generator against 2{,}000
+pooled real images. \emph{Equalized} runs JPEG-encode every non-JPEG image
+once at quality 96 in training and testing, removing the compression
+shortcut.
 
-\section{Experimental Setup}
-\paragraph{Datasets and protocol.} Primary: GenImage~\cite{zhu2023genimage}
-under its strictest split --- train on Stable Diffusion v1.4 fakes plus
-ImageNet reals \emph{only}; test on all eight subsets (ADM, BigGAN, GLIDE,
-Midjourney, SD v1.4, SD v1.5, VQDM, Wukong). Secondary: the in-the-wild
-Chameleon benchmark~\cite{yan2025sanity}, and a held-out set of
-post-2025 commercial generators collected for the released
-system \tofill{enumerate final generator list and collection dates}.
+\input{generated_tables_bench}
 
-\paragraph{Baselines.} CNNDetection~\cite{wang2020cnn},
-LGrad~\cite{tan2023lgrad}, NPR~\cite{tan2024npr},
-UniversalFakeDetect~\cite{ojha2023universal}, DIRE~\cite{wang2023dire},
-FatFormer~\cite{liu2024fatformer}, and AIDE~\cite{yan2025sanity}, all
-retrained or re-evaluated under the identical protocol and identical
-perturbations using released code where available
-\tofill{note any baseline that could not be reproduced}.
+\paragraph{Results.} Table~\ref{tab:main}. Closing the shortcut raises mean
+AUROC (equalized versus as stored), showing that the shortcut otherwise costs
+cross-generator accuracy. The detector is near-perfect on the Stable
+Diffusion family and weaker on GAN- and ADM-based generators. Accuracy at the
+fixed 0.5 cut on the pooled test is only 0.55--0.59 although ranking is good,
+the calibration-under-shift problem of \S\ref{sec:fpr}. Robustness degrades
+with JPEG quality (Table~\ref{tab:robust}).
 
-\paragraph{Metrics.} AUROC and AP (ranking quality); accuracy at $0.5$;
-TPR at $5\%$ FPR (the operationally relevant regime --- falsely accusing
-real photographs is the costly error); expected calibration error (ECE);
-and abstention rate at $(\tau_r,\tau_f) = (0.35, 0.65)$.
+\paragraph{Coherence ablation.} Removing the coherence channel changes clean
+mean AUROC within seed noise, but costs 0.01--0.03 AUROC under strong JPEG
+and downscaling in both seed pairs (Table~\ref{tab:robust}). We claim no more
+than that; similar coherence features appear in public code.
 
-\paragraph{Implementation.} PyTorch; single NVIDIA A100 40GB; AdamW
-(lr $2{\times}10^{-4}$, weight decay $0.05$), cosine schedule with $500$-step
-warmup, batch $64$, $10$ epochs, mixed precision (the fixed forensic
-front-end is always computed in fp32); crop $S{=}256$; the
-semantic backbone contributes no gradients. The fast tier (gradient +
-frequency) has ${\sim}12$M trainable parameters; the accurate tier adds the
-frozen ViT-B ($+86$M frozen, $+0.6$M trainable). Full configuration files
-ship with the code.
-
-\section{Results}
-\label{sec:results}
-\emph{All numbers below are pending; the tables define the exact deliverable
-of the experimental phase and will be populated only by runs reproducible
-from the released harness.}
-
-\begin{table}[t]
-\centering\small
-\caption{Cross-generator generalization (GenImage; train: SD v1.4 only).
-AUROC per test subset. \tofill{complete after training runs}}
-\begin{tabular}{l c c c}
-\hline
-Method & Mean & Worst subset & TPR@5\%FPR \\
-\hline
-CNNDetection~\cite{wang2020cnn} & \tofill{} & \tofill{} & \tofill{} \\
-LGrad~\cite{tan2023lgrad}       & \tofill{} & \tofill{} & \tofill{} \\
-NPR~\cite{tan2024npr}           & \tofill{} & \tofill{} & \tofill{} \\
-UnivFD~\cite{ojha2023universal} & \tofill{} & \tofill{} & \tofill{} \\
-DIRE~\cite{wang2023dire}        & \tofill{} & \tofill{} & \tofill{} \\
-FatFormer~\cite{liu2024fatformer}& \tofill{} & \tofill{} & \tofill{} \\
-AIDE~\cite{yan2025sanity}       & \tofill{} & \tofill{} & \tofill{} \\
-\hline
-GRAFT (fast)     & \tofill{} & \tofill{} & \tofill{} \\
-GRAFT (accurate) & \tofill{} & \tofill{} & \tofill{} \\
-\hline
-\end{tabular}
-\label{tab:main}
-\end{table}
-
-\begin{table}[t]
-\centering\small
-\caption{Transport robustness: mean AUROC over the eight GenImage subsets
-under perturbation. \tofill{complete after training runs}}
-\begin{tabular}{l c c c c}
-\hline
-Method & clean & JPEG50 & down$\times$0.5 & blur $\sigma{=}1$ \\
-\hline
-Best low-level baseline & \tofill{} & \tofill{} & \tofill{} & \tofill{} \\
-Best CLIP baseline      & \tofill{} & \tofill{} & \tofill{} & \tofill{} \\
-GRAFT (accurate)        & \tofill{} & \tofill{} & \tofill{} & \tofill{} \\
-\hline
-\end{tabular}
-\label{tab:robust}
-\end{table}
-
-\subsection{Ablations}
-\label{sec:ablations}
-Planned and implemented in the harness: (a) remove each branch;
-(b) remove the coherence channel $\kappa$ (Eq.~\ref{eq:coherence}) alone;
-(c) replace native-resolution crops with global resize to $256^2$;
-(d) disable transport-chain augmentation; (e) fine-tune vs.\ freeze the
-semantic backbone; (f) gate analysis: distribution of $\alpha$ across clean
-vs.\ perturbed inputs; (g) calibration on/off (ECE, abstention).
-\tofill{ablation table}
+\paragraph{Baselines.} \tofill{re-run CNNDetection, NPR, UnivFD and Community
+Forensics under the identical protocol and perturbations, or remove this
+paragraph}.
 
 \section{Limitations and Ethics}
-GRAFT operates within known fundamental limits: sufficiently strong
-adversarial post-processing can defeat any passive
-detector~\cite{saberi2024robustness}, and the generator population is
-non-stationary --- claims here are snapshots, which is why the release
-couples the paper to a continuously refreshed evaluation harness rather than
-a frozen artifact. Scores are probabilistic signals; we explicitly caution
-against use as sole evidence in legal, journalistic, or academic-integrity
-decisions, and the abstention band exists to make ``the model does not know''
-a first-class output. Partially generated images (inpainting, AI-edited
-photographs) and localization are out of scope for this work. Detection
-research is dual-use: publishing which traces detectors read can guide
-evasion; we follow the field's established norm that transparent, auditable
-detection --- with honest robustness reporting --- serves defenders more than
-secrecy serves attackers.
+All results use public 2020--2023 data and generators; none covers 2025--2026
+commercial systems. The guarantee assumes the real photographs being judged
+resemble the calibration photographs of their stratum; it must be
+recalibrated when cameras or platforms change, and it bounds false
+accusations, not misses. Scores are probabilistic signals and must not be the
+sole evidence about a person. Detection research is dual-use; we publish
+weights, raw scores and the negative result so that claims can be checked.
 
 \section{Conclusion}
-GRAFT unifies the two most generalization-robust families of forensic
-evidence --- gradient-domain local statistics, extended with a
-structure-tensor coherence representation, and frozen foundation-model
-features --- under a gated, calibrated, robustness-first protocol, released
-as a maintained open-source system. \tofill{one-sentence summary of empirical
-findings once tables are complete.}
+Single-image lens physics was not usable as evidence with today's monocular
+estimators. A guarantee on false accusations, however, needs no knowledge of
+generators: real-only, platform-stratified conformal thresholds held on unseen
+phones and platforms. We suggest reporting the realised false-accusation rate
+on held-out devices alongside AUROC.
 
-\paragraph{Reproducibility.} All code, configurations, manifests, and the
-exact benchmark and perturbation harness are released at
-\texttt{github.com/JitendraJha98/fakeradar}; weights are published with model
-cards on the Hugging Face Hub.
+\paragraph{Reproducibility.} Code, configurations, the Gate M and Gate B
+reports, raw per-image scores, and weights
+(\texttt{huggingface.co/JitendraJha98/fakeradar-fast}, CC-BY-NC-SA-4.0) are
+released.
 
 \bibliographystyle{plain}
 \bibliography{references}

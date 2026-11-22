@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -111,4 +112,5 @@ TIER_PRESETS: dict[str, dict[str, Any]] = {"fast": _FAST, "accurate": _ACCURATE}
 def get_preset(tier: str) -> DetectorConfig:
     if tier not in TIER_PRESETS:
         raise ValueError(f"Unknown tier {tier!r}. Available: {sorted(TIER_PRESETS)}")
-    return DetectorConfig.from_dict(TIER_PRESETS[tier])
+    # deep copy: a caller editing its config must never change the built-in preset
+    return DetectorConfig.from_dict(copy.deepcopy(TIER_PRESETS[tier]))

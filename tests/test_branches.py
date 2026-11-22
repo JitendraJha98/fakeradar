@@ -42,3 +42,24 @@ def test_resized_branch_contract():
     """Crop branches have no preprocessor; the base default is None."""
     assert build_branch("gradient").preprocessor() is None
     assert build_branch("frequency").preprocessor() is None
+
+
+def test_coherence_channel_can_be_switched_off_for_the_ablation():
+    from fakeradar.branches.gradient import GradientFieldBranch
+
+    x = torch.rand(2, 3, 64, 64)
+    with_it, without = GradientFieldBranch(), GradientFieldBranch(use_coherence=False)
+    full, reduced = with_it.forensic_stack(x), without.forensic_stack(x)
+    assert full.shape[1] == 17 and reduced.shape[1] == 16
+    assert torch.equal(full[:, :16], reduced)  # only the last (coherence) map is dropped
+    assert without(x).shape == (2, 512)
+
+
+def test_coherence_switch_is_reachable_from_a_detector_config():
+    from fakeradar.config import get_preset
+    from fakeradar.models import FakeRadarModel
+
+    cfg = get_preset("fast")
+    cfg.branches[0].params["use_coherence"] = False
+    model = FakeRadarModel(cfg)
+    assert model.branches["gradient"].encoder.conv1.in_channels == 16

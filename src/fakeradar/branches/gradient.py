@@ -68,9 +68,11 @@ class GradientFieldBranch(DetectionBranch):
     feature_dim = 512
     input_kind = "crop"
 
-    def __init__(self, use_lgrad: bool = False):
+    def __init__(self, use_lgrad: bool = False, use_coherence: bool = True):
         super().__init__()
         self.use_lgrad = use_lgrad
+        # False drops the structure-tensor coherence map (the ablation in the paper)
+        self.use_coherence = use_coherence
 
         srm = _srm_kernels()  # (4,1,5,5)
         self.register_buffer("srm", srm.repeat(3, 1, 1, 1))  # (12,1,5,5), depthwise x3ch
@@ -78,7 +80,8 @@ class GradientFieldBranch(DetectionBranch):
         self.register_buffer("scharr_x", gx)
         self.register_buffer("scharr_y", gy)
 
-        in_ch = 12 + 3 + 1 + 1 + (3 if use_lgrad else 0)  # srm + npr + gmag + coherence (+lgrad)
+        # srm + npr + gmag (+ coherence) (+ lgrad)
+        in_ch = 12 + 3 + 1 + (1 if use_coherence else 0) + (3 if use_lgrad else 0)
         from torchvision.models import resnet18
 
         enc = resnet18(weights=None)
@@ -152,7 +155,7 @@ class GradientFieldBranch(DetectionBranch):
         jxy = F.avg_pool2d(gx * gy, 7, stride=1, padding=3)
         coherence = torch.sqrt((jxx - jyy) ** 2 + 4 * jxy * jxy + 1e-12) / (jxx + jyy + 1e-6)
 
-        maps = [srm, npr, gmag, coherence]
+        maps = [srm, npr, gmag, coherence] if self.use_coherence else [srm, npr, gmag]
         if self.use_lgrad:
             maps.append(self._lgrad_map(x))
         return torch.cat(maps, dim=1)

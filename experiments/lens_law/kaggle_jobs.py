@@ -26,6 +26,7 @@ PREFIX = "fakeradar-"
 HERE = Path(__file__).resolve().parent
 PKG_DIR = HERE / "lenslaw"
 RUNS_DIR = HERE.parents[1] / "runs" / "lens_law"
+MAX_STATUS_FAILURES = 20  # consecutive failed status checks before giving up
 _NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _BOOTSTRAP = """
 import base64 as _b64
@@ -174,8 +175,18 @@ def status(kernel: str) -> str:
 def wait(kernel: str, max_s: int, poll_s: int = 30) -> str:
     """Block until the job leaves the queued and running states."""
     start = time.time()
+    failures = 0
     while True:
-        state = status(kernel)
+        try:
+            state = status(kernel)
+            failures = 0
+        except RuntimeError as e:  # brief DNS or API outages must not lose a long job
+            failures += 1
+            if failures >= MAX_STATUS_FAILURES:
+                raise
+            print(f"status check failed ({failures} in a row): {str(e)[:120]}", flush=True)
+            time.sleep(poll_s)
+            continue
         print(f"[{int(time.time() - start)}s] {kernel}: {state}", flush=True)
         if state in ("COMPLETE", "ERROR") or state.startswith("CANCEL"):
             return state

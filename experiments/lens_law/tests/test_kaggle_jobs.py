@@ -98,3 +98,27 @@ def test_output_can_be_limited_to_files_matching_a_pattern(tmp_path):
     assert "--file-pattern" not in everything
     assert some[-2:] == ["--file-pattern", r".*\.json$"]
     assert some[:3] == ["kernels", "output", "someone/fakeradar-x"]
+
+
+def test_wait_survives_short_network_outages(monkeypatch):
+    replies = iter([RuntimeError("dns"), "RUNNING", RuntimeError("dns"), "COMPLETE"])
+
+    def fake_status(kernel):
+        r = next(replies)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(kaggle_jobs, "status", fake_status)
+    monkeypatch.setattr(kaggle_jobs.time, "sleep", lambda s: None)
+    assert kaggle_jobs.wait("someone/fakeradar-x", max_s=999, poll_s=1) == "COMPLETE"
+
+
+def test_wait_gives_up_after_many_failures_in_a_row(monkeypatch):
+    def always_down(kernel):
+        raise RuntimeError("dns")
+
+    monkeypatch.setattr(kaggle_jobs, "status", always_down)
+    monkeypatch.setattr(kaggle_jobs.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError):
+        kaggle_jobs.wait("someone/fakeradar-x", max_s=10**6, poll_s=1)

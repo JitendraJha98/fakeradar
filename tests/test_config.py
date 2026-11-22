@@ -81,3 +81,14 @@ def test_detector_spec_preset_name_and_inline(tmp_path):
     assert inline.to_dict() == get_preset("fast").to_dict()
     with pytest.raises(FileNotFoundError):
         resolve_detector_config("nope.yaml", tmp_path)
+
+
+def test_changing_a_preset_copy_does_not_leak_into_the_builtin_preset():
+    from fakeradar.config import get_preset
+
+    cfg = get_preset("fast")
+    cfg.branches[0].params["use_coherence"] = False
+    cfg.fusion.dropout = 0.9
+    fresh = get_preset("fast")
+    assert "use_coherence" not in fresh.branches[0].params
+    assert fresh.fusion.dropout == 0.1

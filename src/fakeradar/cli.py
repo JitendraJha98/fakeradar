@@ -78,6 +78,12 @@ def scan(
     device: str = typer.Option("auto", help=_DEVICE_HELP),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
     untrained_ok: bool = typer.Option(False, help="Allow random-init weights (testing only)."),
+    fpr_thresholds: Path = typer.Option(
+        None, help="Thresholds from `fakeradar calibrate-fpr`: adds a verdict at that level."
+    ),
+    stratum: str = typer.Option(
+        None, help="Transport state of these images (e.g. whatsapp), to pick its threshold."
+    ),
 ):
     """Score images: probability that each image is AI-generated.
 
@@ -86,10 +92,24 @@ def scan(
     from PIL import Image
 
     det = _build_detector(tier, checkpoint, pretrained, untrained_ok, device)
+    cal = None
+    if fpr_thresholds is not None:
+        from .evaluation.guarantee import load_calibration
+
+        cal = load_calibration(fpr_thresholds)
     results, errors = [], []
     for f in _collect(paths):
         try:
-            results.append(det.predict(f))
+            result = det.predict(f)
+            if cal is not None:  # verdict at the calibrated false-accusation level
+                known = stratum in cal.thresholds
+                limit = cal.thresholds[stratum] if known else cal.pooled
+                result.extra.update(
+                    flagged=bool(result.prob_ai > limit),
+                    alpha=cal.alpha,
+                    stratum=stratum if known else "pooled",
+                )
+            results.append(result)
         except (OSError, Image.DecompressionBombError) as e:  # corrupt/truncated/huge image
             errors.append({"source": str(f), "error": str(e)})
 
@@ -101,6 +121,8 @@ def scan(
         table.add_column("P(AI)", justify="right")
         table.add_column("verdict")
         table.add_column("branches")
+        if cal is not None:
+            table.add_column(f"flagged at {cal.alpha:g}")
         for r in results:
             color = (
                 "red"
@@ -110,12 +132,15 @@ def scan(
                 else "yellow"
             )
             branches = "  ".join(f"{k}:{v:.2f}" for k, v in r.per_branch.items())
-            table.add_row(
+            cells = [
                 escape(Path(r.source).name),
                 f"{r.prob_ai:.3f}",
                 f"[{color}]{r.verdict}[/]",
                 branches,
-            )
+            ]
+            if cal is not None:
+                cells.append("[red]yes[/]" if r.extra["flagged"] else "no")
+            table.add_row(*cells)
         for e in errors:
             table.add_row(
                 escape(Path(e["source"]).name), "–", "[magenta]error[/]", escape(e["error"])

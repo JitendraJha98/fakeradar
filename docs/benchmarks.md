@@ -33,10 +33,12 @@ plus `perturbation` for robustness). Commit these next to any published table �
 every number must be recomputable from them (paper/INTEGRITY_CHECKLIST.md).
 
 ## Leaderboard
+<!-- leaderboard:start -->
 | model | train data | mean AUROC (8 gen) | AUROC @ jpeg50 | weights |
 |---|---|---|---|---|
-| fast-v0 | GenImage SD1.4 | *pending* | *pending* | HF (soon) |
-| accurate-v0 | GenImage SD1.4 | *pending* | *pending* | HF (soon) |
+| fast-v0 | GenImage SD1.4, 95k images, 5 epochs | 0.9362 ± 0.0015 | 0.8352 ± 0.0047 | [HF](https://huggingface.co/JitendraJha98/fakeradar-fast) (CC-BY-NC-SA-4.0) |
+| accurate-v0 | GenImage SD1.4 | *not trained yet* | | |
+<!-- leaderboard:end -->
 
 Rules: numbers must be reproducible from a manifest + checkpoint; clean and
 perturbed columns are both required; failure cases welcome in issues.

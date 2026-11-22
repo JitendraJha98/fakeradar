@@ -52,7 +52,7 @@ print(r.prob_ai, r.verdict, r.per_branch)
 Local REST API: `fakeradar serve --checkpoint best.pt` → `POST /v1/detect`
 (multipart `file`; uploads over 25 MB → 413, undecodable → 400).
 
-> **Weights status:** v0.1 pretrained weights are being trained now (see [ROADMAP.md](ROADMAP.md)) and will be published to the Hugging Face Hub. Until then: train your own with one command (below) or pass `--untrained-ok` for pipeline smoke tests.
+> **Weights:** `fast-v0` is on the Hugging Face Hub ([JitendraJha98/fakeradar-fast](https://huggingface.co/JitendraJha98/fakeradar-fast), CC-BY-NC-SA-4.0 because the training data is): `fakeradar scan photo.jpg --pretrained fast-v0`. It was trained on one generator (Stable Diffusion v1.4); read the model card's limits before relying on it, and set your own threshold on real photos with `fakeradar calibrate-fpr` rather than trusting the fixed 0.5 cut.
 
 ## Architecture
 
@@ -107,9 +107,22 @@ fakeradar calibrate data/manifests/genimage_stable_diffusion_v_1_4_val.csv --che
 
 Protocol: train on **one** generator (GenImage SD v1.4), evaluate on **all eight** + in-the-wild sets, clean **and** perturbed. Full protocol in [docs/benchmarks.md](docs/benchmarks.md).
 
-| generator | AUROC | acc@0.5 |
-|---|---|---|
-| *(published with v0.1 weights — training in progress)* | – | – |
+<!-- results:start -->
+fast-v0, trained on GenImage SD v1.4 only; AUROC, mean ± std over 2 seeds;
+compression history equalized. Full tables: [experiments/phase4/RESULTS.md](experiments/phase4/RESULTS.md).
+
+| test generator | AUROC |
+|---|---|
+| stable_diffusion_v_1_4 | 0.9996 ± 0.0001 |
+| stable_diffusion_v_1_5 | 0.9994 ± 0.0001 |
+| wukong | 0.9953 ± 0.0003 |
+| VQDM | 0.9224 ± 0.0013 |
+| Midjourney | 0.9203 ± 0.0083 |
+| glide | 0.8932 ± 0.0001 |
+| BigGAN | 0.8965 ± 0.0103 |
+| ADM | 0.8623 ± 0.0314 |
+| **mean of 8** | **0.9362 ± 0.0015** |
+<!-- results:end -->
 
 We publish robustness tables alongside every release. A detector that only reports clean-set accuracy is hiding something.
 

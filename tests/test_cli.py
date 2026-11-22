@@ -97,3 +97,68 @@ def test_calibrate_fpr_command_exists_and_refuses_to_run_without_weights(tmp_pat
     manifest.write_text("path,label\nx.jpg,0\n")
     result = runner.invoke(app, ["calibrate-fpr", str(manifest)])
     assert result.exit_code != 0
+
+
+def _thresholds(tmp_path, pooled, per_stratum=None):
+    path = tmp_path / "fpr.json"
+    data = {
+        "alpha": 0.01,
+        "n": 500,
+        "pooled": pooled,
+        "thresholds": per_stratum or {},
+        "fallback": [],
+    }
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_scan_reports_the_verdict_at_the_calibrated_level(tmp_path):
+    img = tmp_path / "a.png"
+    Image.effect_noise((96, 96), 40).convert("RGB").save(img)
+    low = runner.invoke(
+        app,
+        [
+            "scan",
+            str(img),
+            "--untrained-ok",
+            "--json",
+            "--fpr-thresholds",
+            str(_thresholds(tmp_path, -1.0)),
+        ],
+    )
+    assert low.exit_code == 0
+    row = json.loads(low.output[low.output.index("[") :])[0]
+    assert row["flagged"] is True and row["alpha"] == 0.01 and row["stratum"] == "pooled"
+
+    high = runner.invoke(
+        app,
+        [
+            "scan",
+            str(img),
+            "--untrained-ok",
+            "--json",
+            "--fpr-thresholds",
+            str(_thresholds(tmp_path, 2.0)),
+        ],
+    )
+    assert json.loads(high.output[high.output.index("[") :])[0]["flagged"] is False
+
+
+def test_scan_uses_the_named_stratum_threshold(tmp_path):
+    img = tmp_path / "a.png"
+    Image.effect_noise((96, 96), 40).convert("RGB").save(img)
+    path = _thresholds(tmp_path, 2.0, {"whatsapp": -1.0})
+    args = ["scan", str(img), "--untrained-ok", "--json", "--fpr-thresholds", str(path)]
+    named = runner.invoke(app, [*args, "--stratum", "whatsapp"])
+    row = json.loads(named.output[named.output.index("[") :])[0]
+    assert row["flagged"] is True and row["stratum"] == "whatsapp"
+    other = runner.invoke(app, [*args, "--stratum", "never-seen"])
+    row = json.loads(other.output[other.output.index("[") :])[0]
+    assert row["flagged"] is False and row["stratum"] == "pooled"
+
+
+def test_scan_without_thresholds_is_unchanged(tmp_path):
+    img = tmp_path / "a.png"
+    Image.effect_noise((96, 96), 40).convert("RGB").save(img)
+    result = runner.invoke(app, ["scan", str(img), "--untrained-ok", "--json"])
+    assert "flagged" not in json.loads(result.output[result.output.index("[") :])[0]
