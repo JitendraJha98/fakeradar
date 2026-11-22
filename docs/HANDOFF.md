@@ -128,9 +128,11 @@ a learning guide published as a private artifact
 Decisions: skip same-data baselines (limitation in the paper); skip more
 generators for the detection-rate step; ONNX for the accurate tier and int8
 are roadmap to-dos; skip training on many generators (scaling, not novelty);
-skip the newer-phone audit (no dataset). Item 16 (evaluate on 2025-26
-generators) was to be tried once, bounded, only if a usable public dataset
-exists. Hugging Face Space demo (item 12) was being built.
+skip the newer-phone audit (no dataset). Item 16 DONE (one bounded run): AIGIBench 2024-25 generators, mean AUROC
+fast 0.665, accurate 0.753, Community Forensics 0.965; fast near chance on
+Midjourney v6 and SocialRF (`experiments/phase4/AIGIBENCH.md`, paper table
+`tab:aigibench`). Demo live: huggingface.co/spaces/JitendraJha98/fakeradar
+(static, ONNX in the browser). ALL PLANNED WORK IS COMPLETE.
 User later: PyPI release, compile the paper on Overleaf, rewrite it in their
 own voice, verify references, arXiv (needs an endorser for cs.CV), revoke the
 Kaggle and HF tokens.

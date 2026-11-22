@@ -221,6 +221,18 @@ than the seed-to-seed spread in every condition (Table~\ref{tab:robust}); it
 is stronger on Midjourney, GLIDE and BigGAN and weaker on ADM and VQDM
 (Table~\ref{tab:main}).
 
+\paragraph{Newer generators.} On a fixed sample of AIGIBench~\cite{li2025aigibench}
+(500 real and 500 generated images per set: FLUX.1-dev, SD 3, Midjourney v6,
+DALL-E 3, Imagen 3, SDXL, and two sets collected in the wild), both tiers
+fall far below their GenImage results, and the fast tier is near chance on
+Midjourney v6 and on images collected from social media
+(Table~\ref{tab:aigibench}). The accurate tier is better on every set, but
+both remain well below Community Forensics. A detector trained on one 2022
+generator does not transfer to current ones; this is the setting in which a
+threshold set on real photographs, rather than a fixed cut, matters most.
+
+\input{generated_tables_aigibench}
+
 \paragraph{Coherence ablation.} Removing the coherence channel changes clean
 mean AUROC within seed noise, but costs 0.01--0.03 AUROC under strong JPEG
 and downscaling in both seed pairs (Table~\ref{tab:robust}). We claim no more
@@ -242,8 +254,8 @@ Stable Diffusion v1.4 data, so our accuracy comparison is against a
 re-evaluated public model trained on far more generators, not a same-data
 comparison; it bounds how far behind a small single-generator detector is,
 but does not rank architectures.
-All results use public 2020--2023 data and generators; none covers 2025--2026
-commercial systems. The guarantee assumes the real photographs being judged
+Training and the main benchmark use 2022--2023 generators; the AIGIBench
+check below is a single sample of 2024--25 generators, not a full evaluation. The guarantee assumes the real photographs being judged
 resemble the calibration photographs of their stratum; it must be
 recalibrated when cameras or platforms change, and it bounds false
 accusations, not misses. Scores are probabilistic signals and must not be the
