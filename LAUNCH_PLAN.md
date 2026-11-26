@@ -30,7 +30,7 @@ deployable + cross-generator benchmarked + runs on a laptop.
 ## Integration targets (post v0.2)
 - Fact-checking orgs & OSINT communities (Bellingcat-style workflows)
 - Moderation pipelines (REST API), CMS plugins
-- GRAFT paper (paper/) for research credibility -> repo for adoption; each feeds the other
+- The paper (paper/) for research credibility -> repo for adoption; each feeds the other
 
 ## Metrics that matter
 GitHub stars are vanity; track: weekly PyPI installs, HF weight downloads,

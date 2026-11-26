@@ -126,6 +126,35 @@ def latex(subsets: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def card_section(tier: str) -> str:
+    """Model-card section for one fakeradar tier ("fast" or "accurate")."""
+    if not REPORT.exists():
+        return ""
+    subsets = load()
+    key = f"{tier}_eq"
+    lines = [
+        "",
+        "## Newer generators (AIGIBench, 2024-25)",
+        "",
+        "One bounded evaluation, nothing retrained: a fixed sample of 500 real and 500",
+        "generated images per AIGIBench test set (Li et al. 2025), compression equalized.",
+        "Expect much lower accuracy than on GenImage: this model learned from one 2022",
+        "generator. Community Forensics (public, trained on thousands of generators,",
+        "possibly including some of these) is shown for reference.",
+        "",
+        "| Test set | AUROC, this model | AUROC, Community Forensics |",
+        "|---|---|---|",
+    ]
+    for s, e in subsets.items():
+        lines.append(
+            f"| {PRETTY.get(s, s)} | {e[key]['auroc']:.4f} | {e['commfor']['auroc']:.4f} |"
+        )
+    mean = statistics.mean(e[key]["auroc"] for e in subsets.values())
+    ref = statistics.mean(e["commfor"]["auroc"] for e in subsets.values())
+    lines.append(f"| **Mean** | **{mean:.4f}** | {ref:.4f} |")
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     subsets = load()
     (REPO / "experiments" / "phase4" / "AIGIBENCH.md").write_bytes(

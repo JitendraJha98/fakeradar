@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from aigibench_table import card_section  # noqa: E402
 from model_card import FOOTER  # noqa: E402
 from summarize import (  # noqa: E402  # noqa: E402
     ACCURATE,
@@ -49,8 +50,8 @@ stored in the checkpoint (about 390 MB). For a small, fully offline model see
 
 - **Trained on one generator.** All training images are GenImage Stable
   Diffusion v1.4 against ImageNet photos. Near-perfect on the Stable
-  Diffusion family; weaker on other generators, especially ADM. Never trained
-  or tested on 2025-2026 commercial generators.
+  Diffusion family; weaker on other generators, especially ADM, and much
+  weaker on 2024-25 generators (AIGIBench, last table).
 - **More robust than the fast tier, not more accurate than strong public
   detectors.** It holds up much better after JPEG, resizing and blur (tables
   below), but the public Community Forensics model, trained on thousands of
@@ -129,7 +130,7 @@ def card(root: Path = ROOT) -> str:
             f"| {c} | {fmt([r[c] for r in a_rob])} | {fmt([r[c] for r in f_rob])} | "
             f"{fmt([r[c] for r in b_rob])} |"
         )
-    return HEADER + "\n".join(lines) + "\n" + FOOTER
+    return HEADER + "\n".join(lines) + "\n" + card_section("accurate") + FOOTER
 
 
 def main(argv: list[str] | None = None) -> int:

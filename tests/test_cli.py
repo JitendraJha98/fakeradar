@@ -17,6 +17,18 @@ runner = CliRunner()
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
+_BOX = re.compile("[─-╿]")
+
+
+def flat(output: str) -> str:
+    """Error text as one line: no colour codes, box borders or line wrapping.
+
+    Rich wraps error boxes to the terminal width, so a long temporary path (as on
+    macOS runners) can push a line break into the middle of the phrase we check.
+    """
+    return " ".join(_BOX.sub(" ", _ANSI.sub("", output)).split())
+
+
 def plain_help(command: str) -> str:
     """Help text without colour codes: CI terminals style option names in pieces."""
     result = runner.invoke(app, [command, "--help"], env={"COLUMNS": "200"})
@@ -35,7 +47,7 @@ def test_scan_requires_weights_clean_error(tmp_path):
     Image.new("RGB", (300, 300), (50, 60, 70)).save(img)
     result = runner.invoke(app, ["scan", str(img)])
     assert result.exit_code != 0
-    assert "No weights given" in result.output
+    assert "No weights given" in flat(result.output)
     assert "Traceback" not in result.output
 
 
@@ -60,7 +72,7 @@ def test_scan_untrained_table_and_json(tmp_path):
 def test_scan_no_images_is_a_usage_error(tmp_path):
     result = runner.invoke(app, ["scan", str(tmp_path), "--untrained-ok"])
     assert result.exit_code != 0
-    assert "No supported images" in result.output
+    assert "No supported images" in flat(result.output)
 
 
 def test_scan_reports_corrupt_files_and_continues(tmp_path):
@@ -81,7 +93,7 @@ def test_benchmark_without_weights_is_a_clean_error(tmp_path):
     manifest.write_text("path,label\nx.png,0\n")
     result = runner.invoke(app, ["benchmark", str(manifest)])
     assert result.exit_code != 0
-    assert "No weights given" in result.output and "Traceback" not in result.output
+    assert "No weights given" in flat(result.output) and "Traceback" not in result.output
 
 
 def test_non_checkpoint_file_is_a_clean_error(tmp_path):
@@ -91,7 +103,7 @@ def test_non_checkpoint_file_is_a_clean_error(tmp_path):
     Image.new("RGB", (300, 300)).save(img)
     result = runner.invoke(app, ["scan", str(img), "--checkpoint", str(bogus)])
     assert result.exit_code != 0
-    assert "not a fakeradar checkpoint" in result.output
+    assert "not a fakeradar checkpoint" in flat(result.output)
 
 
 def test_equalize_jpeg_option_is_offered_where_images_are_scored():

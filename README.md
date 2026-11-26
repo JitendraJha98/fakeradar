@@ -6,7 +6,6 @@
 [![CodeQL](https://github.com/JitendraJha98/fakeradar/actions/workflows/codeql.yml/badge.svg)](https://github.com/JitendraJha98/fakeradar/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/JitendraJha98/fakeradar/badge)](https://securityscorecards.dev/viewer/?uri=github.com/JitendraJha98/fakeradar)
 [![codecov](https://codecov.io/gh/JitendraJha98/fakeradar/branch/main/graph/badge.svg)](https://codecov.io/gh/JitendraJha98/fakeradar)
-[![PyPI](https://img.shields.io/pypi/v/fakeradar.svg)](https://pypi.org/project/fakeradar/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
@@ -162,7 +161,7 @@ New generator coverage requests, failure-case reports, and new forensic branches
 }
 ```
 
-Research paper (GRAFT) in preparation — see [paper/](paper/).
+Research paper in preparation (draft in [paper/](paper/)): an audited false-accusation guarantee, an honest benchmark, and a negative result on lens physics.
 
 ## License
 

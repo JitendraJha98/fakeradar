@@ -11,10 +11,10 @@ data:
   val_manifest: data/manifests/genimage_stable_diffusion_v_1_4_val.csv
   num_workers: 8
   # GenImage stores real photos as JPEG and generated images as PNG, so
-  # "has JPEG traces" becomes a shortcut for "real". Uncomment to give both
+  # "has JPEG traces" becomes a shortcut for "real". This gives both
   # classes one JPEG pass at this quality (applies to training, validation and
   # the post-training calibration; use --equalize-jpeg 96 when benchmarking):
-  # equalize_jpeg_quality: 96
+  equalize_jpeg_quality: 96          # as in the published runs; remove for non-GenImage data
 
 optim:
   epochs: 10

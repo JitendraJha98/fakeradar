@@ -1,29 +1,27 @@
-# GRAFT — Pre-submission Integrity Checklist
+# Pre-submission Integrity Checklist
 
 This draft is **not submittable yet**. Submitting it with placeholder or
 invented numbers would be research misconduct and would end the project's
 credibility. Work through every item below, in order.
 
 ## 1. Experiments (the paper does not exist without these)
-- [ ] Train GRAFT-fast and GRAFT-accurate under the exact protocol in §4
-      (GenImage SD1.4-only; configs are in `configs/`)
-- [ ] Re-run/re-evaluate every baseline (CNNDetection, LGrad, NPR, UnivFD,
-      DIRE, FatFormer, AIDE) with their released code under the SAME
-      protocol and SAME perturbations — never copy numbers across papers
-      with different protocols
-- [ ] Fill Tables 1–2 and the ablation table ONLY from `fakeradar benchmark`
-      / `fakeradar robustness` outputs; commit the raw CSVs alongside
-- [ ] Run each headline number with ≥3 seeds; report mean (±std in appendix)
-- [ ] If a claimed advantage doesn't hold, report it anyway and revise the
-      claims — a narrow honest win beats a broad fake one
+- [x] Train the fast and accurate tiers under the exact protocol (GenImage SD1.4-only),
+      3 seeds each: `experiments/phase4/RESULTS.md`
+- [x] Baselines: Community Forensics re-evaluated on the same images and perturbations;
+      same-data retrained baselines decided against (2026-11-23), stated as a limitation.
+      Never copy numbers across papers with different protocols
+- [x] Tables generated only from saved outputs (`paper/make_tables.py`,
+      `experiments/phase4/aigibench_table.py`); raw score CSVs are in `runs/` (git-ignored, keep them)
+- [x] Each headline number has 3 seeds (coherence ablation: 2); mean ± std reported
+- [x] Claims revised where they did not hold (gate, coherence novelty, accuracy vs.
+      Community Forensics, AIGIBench drop) — a narrow honest win beats a broad fake one
 
 ## 2. Novelty verification (do this the week before submission)
 - [ ] Fresh arXiv sweep (cs.CV, last 6 months) for: "gradient field detection",
       "structure tensor forensic", "coherence synthetic image", "CLIP fusion
       fake detection", "frozen backbone AI-generated"
-- [ ] If someone published the coherence idea or the same fusion: cite them,
-      reposition the contribution (e.g., robustness protocol + system), do
-      not pretend they don't exist
+- [x] Prior fusion and coherence work found (AIDE, Co-SPY, public code): cited, and the
+      paper repositioned around the guarantee, the honest benchmark and the negative result
 - [ ] The "to our knowledge" claims in §1 and §3.1 must be re-dated
 
 ## 3. Citations
