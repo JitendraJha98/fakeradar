@@ -133,6 +133,18 @@ fast 0.665, accurate 0.753, Community Forensics 0.965; fast near chance on
 Midjourney v6 and SocialRF (`experiments/phase4/AIGIBENCH.md`, paper table
 `tab:aigibench`). Demo live: huggingface.co/spaces/JitendraJha98/fakeradar
 (static, ONNX in the browser). ALL PLANNED WORK IS COMPLETE.
+Audit 2026-11-26 (commit 1a3d289): fixed a macOS-only CI failure (error box
+wrapping split the checked phrase; tests use flat()); both HF model cards now
+include the AIGIBench table; training configs set equalize_jpeg_quality: 96;
+removed the stale July paper.pdf; README has no PyPI badge until a release.
+Left, all owner-side: push; confirm CI green; Overleaf compile; verify
+references (11 marked VERIFY + check all); fresh literature sweep (the one
+	ofill left in the paper); re-check numbers quoted in running text; rewrite
+in own voice; venue template/anonymise if submitting; arXiv endorsement for
+cs.CV; PyPI release (then re-add the badge, bump version from 0.1.0, tag,
+update CITATION.cff); revoke Kaggle/HF tokens. Optional: share the learning
+page; delete large local data (DPDD zip 16.9 GB in Downloads, data/fodb, runs/)
+only after deciding what to keep (FODB must not be redistributed).
 User later: PyPI release, compile the paper on Overleaf, rewrite it in their
 own voice, verify references, arXiv (needs an endorser for cs.CV), revoke the
 Kaggle and HF tokens.
